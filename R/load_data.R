@@ -22,14 +22,17 @@ format_variables_acs <- function(variables) {
 
 }
 
-load_data_acs <- function(geography, formatted_variables, key, endyear, state = NULL, county = NULL, survey) {
+load_data_acs <- function(geography, formatted_variables, key, year, state = NULL, county = NULL, survey) {
 
   if (survey == "acs1") {
-    survey <- "acs/acs1"
+    if (year <= 2010) print("The acs1 data is currently available beginning in 2011. Please select a different year.")
+    if (year > 2014) {
+      survey <- "acs/acs1"
+    }
   }
 
   base <- paste("https://api.census.gov/data",
-                 as.character(endyear),
+                 as.character(year),
                  survey, sep = "/")
 
   if (grepl("^DP", formatted_variables)) {
@@ -41,7 +44,7 @@ load_data_acs <- function(geography, formatted_variables, key, endyear, state = 
     message("Using the ACS Subject Tables")
     if (survey == "acs1") {
       base <- paste("https://api.census.gov/data",
-                    as.character(endyear),
+                    as.character(year),
                     "subject",
                     sep = "/")
     } else {
@@ -96,11 +99,15 @@ load_data_acs <- function(geography, formatted_variables, key, endyear, state = 
                                    key = key))
   }
 
+  # Make sure call status returns 200, else, print the error message for the user.
+  callStatus <- http_status(call)
+  if (callStatus$reason != "OK") {
+    print(paste0(callStatus$category, " ", callStatus$reason, " ", callStatus$message))
+  } else {
+    content <- content(call, as = "text")
+  }
 
-
-  content <- content(call, as = "text")
-
-  validate_call(content = content, geography = geography, year = endyear,
+  validate_call(content = content, geography = geography, year = year,
                 dataset = survey)
 
   dat <- tbl_df(fromJSON(content))
@@ -199,9 +206,18 @@ load_data_decennial <- function(geography, variables, key, year,
                                    key = key))
   }
 
+  # Make sure call status returns 200, else, print the error message for the user.
 
-
-  content <- content(call, as = "text")
+  callStatus <- http_status(call)
+  if (callStatus$reason != "OK") {
+    if (sumfile == "sf1") {
+      print("Checking SF3 API for data...")
+    } else {
+      print(paste0(callStatus$category, " ", callStatus$reason, " ", callStatus$message))
+    }
+  } else {
+    content <- content(call, as = "text")
+  }
 
   # Fix issue in SF3 2000 API - https://github.com/walkerke/tidycensus/issues/22
   if (year == 2000 & sumfile == "sf3") {

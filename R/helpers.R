@@ -168,3 +168,108 @@ census_api_key <- function(key, overwrite = FALSE, install = FALSE){
 }
 
 
+# Function to generate a vector of variables from an ACS table
+variables_from_table_acs <- function(table, year, survey, cache_table) {
+
+  if (grepl("^DP", table) | grepl("^S[0-9].", table)) {
+    stop("The `table` parameter is only available for ACS detailed tables.", call. = FALSE)
+  }
+
+  # Look to see if table exists in cache dir
+  cache_dir <- user_cache_dir("tidycensus")
+
+  dset <- paste0(survey, "_", year, ".rds")
+
+
+
+  if (cache_table == TRUE) {
+    message(sprintf("Loading %s variables for %s from table %s and caching the dataset for faster future access.", toupper(survey), year, table))
+    df <- load_variables(year, survey, cache = TRUE)
+  } else {
+    if (file.exists(file.path(cache_dir, dset))) {
+      df <- load_variables(year, survey, cache = TRUE)
+    } else {
+      message(sprintf("Loading %s variables for %s from table %s. To cache this dataset for faster access to ACS tables in the future, run this function with `cache_table = TRUE`. You only need to do this once per ACS dataset.", toupper(survey), year, table))
+      df <- load_variables(year, survey, cache = FALSE)
+    }
+  }
+
+  # For backwards compatibility
+  names(df) <- tolower(names(df))
+
+  specific <- paste0(table, "_")
+
+  # Find all variables that match the table
+  vars <- df %>%
+    filter(grepl(specific, name)) %>%
+    pull(name)
+
+  vars <- substr(vars, 1, nchar(vars) - 1)
+
+  vars <- unique(vars)
+
+  return(vars)
+
+}
+
+
+# Function to generate a vector of variables from an Census table
+variables_from_table_decennial <- function(table, year, sumfile, cache_table) {
+
+  if (grepl("^DP", table) | grepl("^S[0-9].", table)) {
+    stop("The `table` parameter is only available for ACS detailed tables.", call. = FALSE)
+  }
+
+  # Look to see if table exists in cache dir
+  cache_dir <- user_cache_dir("tidycensus")
+
+  dset <- paste0(sumfile, "_", year, ".rds")
+
+  if (cache_table == TRUE) {
+
+    df <- load_variables(year, sumfile, cache = TRUE)
+    names(df) <- tolower(names(df))
+
+    # Check to see if we need to look in sf3
+    if (!any(grepl(table, df$name))) {
+      df <- load_variables(year, dataset = "sf3", cache = TRUE)
+      names(df) <- tolower(names(df))
+    }
+
+    message(sprintf("Loading %s variables for %s from table %s and caching the dataset for faster future access.", toupper(sumfile), year, table))
+
+  } else {
+    if (file.exists(file.path(cache_dir, dset))) {
+      df <- load_variables(year, sumfile, cache = TRUE)
+      names(df) <- tolower(names(df))
+
+      # Check to see if we need to look in sf3
+      if (!any(grepl(table, df$name))) {
+        df <- load_variables(year, dataset = "sf3", cache = TRUE)
+        names(df) <- tolower(names(df))
+      }
+
+    } else {
+      message(sprintf("Loading %s variables for %s from table %s. To cache this dataset for faster access to Census tables in the future, run this function with `cache_table = TRUE`. You only need to do this once per Census dataset.", toupper(sumfile), year, table))
+      df <- load_variables(year, sumfile, cache = FALSE)
+      names(df) <- tolower(names(df))
+
+      # Check to see if we need to look in sf3
+      if (!any(grepl(table, df$name))) {
+        df <- load_variables(year, dataset = "sf3", cache = FALSE)
+        names(df) <- tolower(names(df))
+      }
+    }
+  }
+
+  # Find all variables that match the table
+  vars <- df %>%
+    filter(grepl(paste0(table, "[0-9]+"), name)) %>%
+    pull(name)
+
+  return(vars)
+
+}
+
+
+
