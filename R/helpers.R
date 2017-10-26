@@ -11,8 +11,19 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
 
     if (year == 1990) {
       st <- mutate(st, GEOID = ST)
+      st <- st %>%
+        group_by(GEOID) %>%
+        summarize() %>%
+        st_cast("MULTIPOLYGON")
+
     } else if (year %in% c(2000, 2010)) {
       st <- mutate(st, GEOID = STATE)
+      if (cb == TRUE & year == 2000) {
+        st <- st %>%
+          group_by(GEOID) %>%
+          summarize() %>%
+          st_cast("MULTIPOLYGON")
+      }
     }
 
     return(st)
@@ -24,8 +35,18 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
 
     if (year == 1990) {
       ct <- mutate(ct, GEOID = paste0(ST, CO))
+      ct <- ct %>%
+        group_by(GEOID) %>%
+        summarize() %>%
+        st_cast("MULTIPOLYGON")
     } else if (year %in% c(2000, 2010)) {
       ct <- mutate(ct, GEOID = paste0(STATE, COUNTY))
+      if (cb == TRUE & year == 2000) {
+        ct <- ct %>%
+          group_by(GEOID) %>%
+          summarize() %>%
+          st_cast("MULTIPOLYGON")
+      }
     }
 
     return(ct)
@@ -45,6 +66,13 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
       }
       tr <- mutate(tr, GEOID = paste0(STATE, COUNTY, TRACT))
     }
+    if (any(duplicated(tr$GEOID))) {
+      tr <- tr %>%
+        group_by(GEOID) %>%
+        summarize() %>%
+        st_cast("MULTIPOLYGON")
+    }
+
     return(tr)
 
   } else if (geography == "block group") {
@@ -58,6 +86,13 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
         mutate(GEOID = paste0(STATE, COUNTY, TRACT, BLKGROUP))
     } else if (year == 2010) {
       bg <- mutate(bg, GEOID = paste0(STATE, COUNTY, TRACT, BLKGRP))
+    }
+
+    if (any(duplicated(bg$GEOID))) {
+      bg <- bg %>%
+        group_by(GEOID) %>%
+        summarize() %>%
+        st_cast("MULTIPOLYGON")
     }
 
     return(bg)
@@ -89,6 +124,8 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
     } else if (year == 2000) {
       bl <- rename(bl, GEOID = BLKIDFP00)
     }
+
+    return(bl)
 
   } else {
 
@@ -131,24 +168,25 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
 census_api_key <- function(key, overwrite = FALSE, install = FALSE){
 
   if (install == TRUE) {
-    setwd(Sys.getenv("HOME"))
-    if(file.exists(".Renviron")){
+    home <- Sys.getenv("HOME")
+    renv <- file.path(home, ".Renviron")
+    if(file.exists(renv)){
       # Backup original .Renviron before doing anything else here.
-      file.copy(".Renviron", ".Renviron_backup")
+      file.copy(renv, file.path(home, ".Renviron_backup"))
     }
-    if(!file.exists(".Renviron")){
-      file.create(".Renviron")
+    if(!file.exists(renv)){
+      file.create(renv)
     }
     else{
       if(isTRUE(overwrite)){
         message("Your original .Renviron will be backed up and stored in your R HOME directory if needed.")
-        oldenv=read.table(".Renviron", stringsAsFactors = FALSE)
+        oldenv=read.table(renv, stringsAsFactors = FALSE)
         newenv <- oldenv[-grep("CENSUS_API_KEY", oldenv),]
-        write.table(newenv, ".Renviron", quote = FALSE, sep = "\n",
+        write.table(newenv, renv, quote = FALSE, sep = "\n",
                     col.names = FALSE, row.names = FALSE)
       }
       else{
-        tv <- readLines(".Renviron")
+        tv <- readLines(renv)
         if(isTRUE(any(grepl("CENSUS_API_KEY",tv)))){
           stop("A CENSUS_API_KEY already exists. You can overwrite it with the argument overwrite=TRUE", call.=FALSE)
         }
@@ -157,7 +195,7 @@ census_api_key <- function(key, overwrite = FALSE, install = FALSE){
 
     keyconcat <- paste("CENSUS_API_KEY=","'",key,"'", sep = "")
     # Append API key to .Renviron file
-    write(keyconcat, ".Renviron", sep = "\n", append = TRUE)
+    write(keyconcat, renv, sep = "\n", append = TRUE)
     message('Your API key has been stored in your .Renviron and can be accessed by Sys.getenv("CENSUS_API_KEY"). \nTo use now, restart R or run `readRenviron("~/.Renviron")`')
     return(key)
   } else {

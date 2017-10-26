@@ -1,10 +1,10 @@
-3df04ebff58bbedae3d91cf5d6dc6927 *DESCRIPTION
+b3540eea710ec98d38e439cae2be614d *DESCRIPTION
 18b4c3d51f502b0857a946177c9bd552 *LICENSE
 d2ec85d9b91a43b04ad1b74a550c9321 *NAMESPACE
 e06adcf86c0ae85e92e8ec0bd8b95eb2 *R/acs.R
 c02c6151b216c218a56b87ed4af837bc *R/census.R
 054c0f1d57d3d9544e628051ae9693a9 *R/fips_codes.R
-0b315284b71e0a87e066aa319c53b719 *R/helpers.R
+e68ee7739e5897a0cd059965017c8b36 *R/helpers.R
 1cf315ec950e34a8e31f38fcd1741574 *R/load_data.R
 494c54345ae03b582a6cdd07d762d2ad *R/moe.R
 b275bb242c8bb045d642a269b02b2c1f *R/search_variables.R
@@ -12,7 +12,7 @@ c9b7525c2e357ffd3b0ac40d4db8a9eb *R/tidycensus-package.R
 1bbc6d63344e356693ffe0ba34761f28 *R/utils.R
 0af78356cba6f7ee87d1bf938dd8e902 *R/validate_call.R
 91584fef0cde833690537e8924118f85 *R/zzz.r
-a8774eea6aaf134ccbfaad55156b997f *README.md
+213201883b243ed2bdcf446190dc3a2c *README.md
 9b3a1eb434f0fa7d5957b9307281f0d4 *data/fips_codes.rda
 a99420a9134294a6d734b681fe7c0158 *man/census_api_key.Rd
 d8f2fbd3f90f9ba8e724dd2ae4bbc085 *man/fips_codes.Rd
