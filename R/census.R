@@ -70,38 +70,57 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
 
   }
 
-  if (is.null(variables) & is.null(table)) {
+  if (is.null(variables) && is.null(table)) {
     stop("Either a vector of variables or an table must be specified.", call. = FALSE)
   }
 
-  if (!is.null(variables) & !is.null(table)) {
+  if (!is.null(variables) && !is.null(table)) {
     stop("Specify variables or a table to retrieve; they cannot be combined.",
          call. = FALSE)
   }
 
-  if (geography %in% c("tract", "block group") & year == 1990 & is.null(county)) {
+  if (geography == "block" && year != 2010) {
+    stop("At the moment, block data is only available for 2010. I recommend using NHGIS (http://www.nhgis.org) and the ipumsr package for block data for other years.", call. = FALSE)
+  }
+
+  if (geography %in% c("tract", "block group") && year == 1990 && is.null(county)) {
     stop("At the moment, tracts and block groups for 1990 require specifying a county.",
          call. = FALSE)
   }
 
   if (geography == "zcta") geography <- "zip code tabulation area"
 
-  if (geography == "zip code tabulation area" & is.null(state)) {
+  if (geography == "zip code tabulation area" && is.null(state)) {
     stop("ZCTA data for the decennial Census is only available by state from tidycensus.",
          call. = FALSE)
   }
 
-  if (geography == "zip code tabulation area" & geometry == TRUE) {
+  if (geography == "zip code tabulation area" && geometry) {
     stop("Linked ZCTA geometry and attributes for `get_decennial` are not currently available in tidycensus.",
          call. = FALSE)
+  }
+
+  cache <- getOption("tigris_use_cache", FALSE)
+
+  if (!cache && geometry) {
+    message("Downloading feature geometry from the Census website.  To cache shapefiles for use in future sessions, set `options(tigris_use_cache = TRUE)`.")
+  }
+
+  # Allow users to get all block groups in a state
+  if (geography == "block group" && is.null(county)) {
+    st <- suppressMessages(validate_state(state))
+
+    county <- fips_codes[fips_codes$state_code == st, ]$county_code
+
+
   }
 
   # If more than one state specified for tracts - or more than one county
   # for block groups - take care of this under the hood by having the function
   # call itself and return the result
-  if (geography == "tract" & length(state) > 1) {
+  if (geography == "tract" && length(state) > 1) {
     mc <- match.call(expand.dots = TRUE)
-    if (geometry == TRUE) {
+    if (geometry) {
       result <- map(state, function(x) {
         mc[["state"]] <- x
         eval(mc)
@@ -123,9 +142,9 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
     return(result)
   }
 
-  if ((geography %in% c("block group", "block") & length(county) > 1) | (geography == "tract" & length(county) > 1)) {
+  if ((geography %in% c("block group", "block") && length(county) > 1) || (geography == "tract" && length(county) > 1)) {
     mc <- match.call(expand.dots = TRUE)
-    if (geometry == TRUE) {
+    if (geometry) {
       result <- map(county, function(x) {
         mc[["county"]] <- x
         eval(mc)
@@ -160,7 +179,7 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
       d <- try(load_data_decennial(geography, x, key, year, sumfile, state, county),
                  silent = TRUE)
       # If sf1 fails, try to get it from sf3
-      if ("try-error" %in% class(d)) {
+      if (inherits(d, "try-error")) {
         d <- try(suppressMessages(load_data_decennial(geography, x, key, year, sumfile = "sf3", state, county)))
       }
       d
@@ -171,7 +190,7 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
                silent = TRUE)
 
     # If sf1 fails, try to get it from sf3
-    if ("try-error" %in% class(dat)) {
+    if (inherits(dat, "try-error")) {
       dat <- try(suppressMessages(load_data_decennial(geography, variables, key, year, sumfile = "sf3", state, county)))
     }
 
@@ -185,11 +204,26 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
     dat2 <- sub %>%
       gather(key = variable, value = value, -GEOID, -NAME)
 
+    if (!is.null(names(variables))) {
+      for (i in 1:length(variables)) {
+        dat2[dat2 == variables[i]] <- names(variables)[i]
+      }
+    }
+
   } else if (output == "wide") {
 
     dat <- dat[!duplicated(names(dat), fromLast = TRUE)]
 
     dat2 <- dat
+
+    if (!is.null(names(variables))) {
+      for (i in 1:length(variables)) {
+        names(dat2) <- str_replace(names(dat2), variables[i], names(variables)[i])
+      }
+    }
+
+    dat2 <- dat2 %>%
+      select(GEOID, NAME, everything())
 
   }
 
@@ -198,25 +232,25 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
     sumdat <- suppressMessages(try(load_data_decennial(geography, summary_var, key, year,
                                                    sumfile, state, county)))
 
-    if ("try-error" %in% class(sumdat)) {
+    if (inherits(sumdat, "try-error")) {
       sumdat <- suppressMessages(try(load_data_decennial(geography, summary_var, key, year,
                                         sumfile = "sf3", state, county)))
     }
 
     dat2 <- dat2 %>%
       inner_join(sumdat, by = "GEOID") %>%
-      rename_("summary_value" = summary_var,
-              NAME = "NAME.x") %>%
+      rename("summary_value" = !! summary_var,
+             NAME = "NAME.x") %>%
       select(-NAME.y)
 
   }
 
-  if (geometry == TRUE) {
+  if (geometry) {
 
     geom <- suppressMessages(use_tigris(geography = geography, year = year,
                        state = state, county = county, ...))
 
-    if (keep_geo_vars == FALSE) {
+    if (! keep_geo_vars) {
 
       geom <- select(geom, GEOID, geometry)
 

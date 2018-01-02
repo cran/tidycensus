@@ -11,9 +11,8 @@
 #'                    Defaults to FALSE; if TRUE, only needs to be called once per
 #'                    dataset.  If variables dataset is already cached via the
 #'                    \code{load_variables} function, this can be bypassed.
-#' @param year The year, or endyear, of the ACS sample. 2010 through 2015 are
-#'                available for five-year data; 2016 is also available for 1-year data.
-#'                Defaults to 2015.
+#' @param year The year, or endyear, of the ACS sample. 2010 through 2016 are
+#'                available. Defaults to 2016.
 #' @param endyear Deprecated and will be removed in a future release.
 #' @param output One of "tidy" (the default) in which each row represents an
 #'               enumeration unit-variable combination, or "wide" in which each
@@ -67,17 +66,19 @@
 #'   geom_errorbarh(aes(xmin = estimate - moe, xmax = estimate + moe)) +
 #'   geom_point(color = "red", size = 3) +
 #'   labs(title = "Household income by county in Vermont",
-#'        subtitle = "2011-2015 American Community Survey",
+#'        subtitle = "2012-2016 American Community Survey",
 #'        y = "",
 #'        x = "ACS estimate (bars represent margin of error)")
 #'
 #' }
 #' @export
 get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FALSE,
-                    year = 2015, endyear = NULL,
+                    year = 2016, endyear = NULL,
                     output = "tidy",
                     state = NULL, county = NULL, geometry = FALSE, keep_geo_vars = FALSE,
                     summary_var = NULL, key = NULL, moe_level = 90, survey = "acs5", ...) {
+
+  message("Please note: `get_acs()` now defaults to a year or endyear of 2016.")
 
   if (Sys.getenv('CENSUS_API_KEY') != '') {
 
@@ -94,6 +95,10 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     message("The `endyear` parameter is deprecated and will be removed in a future release.  Please use `year` instead.")
   }
 
+  if (geography == "block") {
+    stop("Block data are not available in the ACS. Use `get_decennial()` to access block data from the 2010 Census.", call. = FALSE)
+  }
+
   if (survey == "acs3") {
     if (year > 2013) {
       stop("The three-year ACS ended in 2013. For newer data, use the 1-year or 5-year ACS.", call. = FALSE)
@@ -105,38 +110,51 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
 
   if (survey == "acs1") {
+    if (year < 2012) {
+      stop("The acs1 data is currently available beginning in 2012. Please select a different year.", call. = FALSE)
+    }
     message("The one-year ACS provides data for geographies with populations of 65,000 and greater.")
   }
 
   cache <- getOption("tigris_use_cache", FALSE)
 
-  if (cache == FALSE & geometry == TRUE) {
+  if (! cache && geometry) {
     message("Downloading feature geometry from the Census website.  To cache shapefiles for use in future sessions, set `options(tigris_use_cache = TRUE)`.")
   }
 
-  # if (survey == "acs3" | survey == "acs1") {
+  # if (survey == "acs3" || survey == "acs1") {
   #   if (geography == "block group") {
   #     warning("The acs1 and acs3 surveys do not support block group geographies. Please select 'acs5' for block groups.")
   #   }
   # }
 
-  if (is.null(variables) & is.null(table)) {
+  if (is.null(variables) && is.null(table)) {
     stop("Either a vector of variables or an ACS table must be specified.", call. = FALSE)
   }
 
-  if (!is.null(variables) & !is.null(table)) {
+  if (!is.null(variables) && !is.null(table)) {
     stop("Specify variables or a table to retrieve; they cannot be combined.",
          call. = FALSE)
   }
 
   if (geography == "zcta") geography <- "zip code tabulation area"
 
+  # Allow users to get all block groups in a state
+
+  if (geography == "block group" && is.null(county)) {
+    st <- suppressMessages(validate_state(state))
+
+    county <- fips_codes[fips_codes$state_code == st, ]$county_code
+
+
+  }
+
   # If more than one state specified for tracts - or more than one county
   # for block groups - take care of this under the hood by having the function
   # call itself and return the result
-  if (geography == "tract" & length(state) > 1) {
+  if (geography == "tract" && length(state) > 1) {
     mc <- match.call(expand.dots = TRUE)
-    if (geometry == TRUE) {
+    if (geometry) {
       result <- map(state, function(x) {
         mc[["state"]] <- x
         eval(mc)
@@ -158,9 +176,9 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     return(result)
   }
 
-  if (geography == "block group" & length(county) > 1) {
+  if (geography == "block group" && length(county) > 1) {
     mc <- match.call(expand.dots = TRUE)
-    if (geometry == TRUE) {
+    if (geometry) {
       result <- map(county, function(x) {
         mc[["county"]] <- x
         eval(mc)
@@ -182,9 +200,9 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     return(result)
   }
 
-  if (geography == "block group" & length(county) > 1) {
+  if (geography == "block group" && length(county) > 1) {
     mc <- match.call(expand.dots = TRUE)
-    if (geometry == TRUE) {
+    if (geometry) {
       result <- map(county, function(x) {
         mc[["county"]] <- x
         eval(mc)
@@ -249,11 +267,22 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
       gather(key = variable, value = value, -GEOID, -NAME) %>%
       separate(variable, into = c("variable", "type"), sep = -2) %>%
       mutate(type = ifelse(type == "E", "estimate", "moe")) %>%
-      spread(type, value) %>%
-      mutate(moe = moe * moe_factor)
+      spread(type, value)
 
-    # Convert -555555555 values to NA (ACS1 issue)
-    dat2[dat2 == -555555555] <- NA
+    if ("moe" %in% names(dat2)) {
+      dat2 <- mutate(dat2, moe = moe * moe_factor)
+    }
+
+
+    # Convert missing values to NA
+    dat2[dat2 < -100000000] <- NA
+
+    # Change names if supplied
+    if (!is.null(names(variables))) {
+      for (i in 1:length(variables)) {
+        dat2[dat2 == variables[i]] <- names(variables)[i]
+      }
+    }
 
 
   } else if (output == "wide") {
@@ -262,8 +291,8 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
     dat <- dat[!duplicated(names(dat), fromLast = TRUE)]
 
-    # Convert -555555555 values to NA (ACS1 issue)
-    dat[dat == -555555555] <- NA
+    # Convert missing values values to NA
+    dat[dat < -100000000] <- NA
 
     # Find MOE vars
     # moe_vars <- grep("*M", names(dat))
@@ -274,6 +303,15 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
     dat2 <- dat %>%
       mutate_if(grepl("*M$", names(.)), funs(moex))
+
+    if (!is.null(names(variables))) {
+      for (i in 1:length(variables)) {
+        names(dat2) <- str_replace(names(dat2), variables[i], names(variables)[i])
+      }
+    }
+
+    dat2 <- dat2 %>%
+      select(GEOID, NAME, everything())
 
   }
 
@@ -289,23 +327,23 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
     dat2 <- dat2 %>%
       inner_join(sumdat, by = "GEOID") %>%
-      rename_(summary_est = sumest,
-              summary_moe = summoe,
-              NAME = "NAME.x") %>%
+      rename(summary_est = !! sumest,
+             summary_moe = !! summoe,
+             NAME = "NAME.x") %>%
       select(-NAME.y) %>%
       mutate(summary_moe = round(summary_moe * moe_factor, 0))
 
-    # Convert -555555555 values to NA (ACS1 issue)
-    dat2[dat2 == -555555555] <- NA
+    # Convert -555555555, -666666666, or -222222222 values to NA
+    dat2[dat2 < -100000000] <- NA
 
   }
 
-  if (geometry == TRUE) {
+  if (geometry) {
 
     geom <- suppressMessages(use_tigris(geography = geography, year = year,
                                         state = state, county = county, ...))
 
-    if (keep_geo_vars == FALSE) {
+    if (! keep_geo_vars) {
 
       geom <- select(geom, GEOID, geometry)
 
@@ -313,7 +351,6 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
     # Merge and return the output
     out <- inner_join(geom, dat2, by = "GEOID") %>%
-      as_tibble() %>%
       st_as_sf()
 
     return(out)
@@ -323,5 +360,19 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     return(dat2)
 
   }
+
+  # Allow users to get data for specific state, or specific county
+  # Update for more geographies if requested
+  # if (geography == "state" && !is.null(state)) {
+  #   statev <- map_chr(state, function(x) { validate_state(x) })
+  #   return(dat2[dat2$GEOID %in% statev, ])
+  # }
+  #
+  # if (geography == "county" && !is.null(county)) {
+  #   state1 <- validate_state(state)
+  #   countyv <- map_chr(county, function(x) { validate_county(x) })
+  #   ctys <- paste0(state1, countyv)
+  #   return(dat2[dat2$GEOID %in% ctys, ])
+  # }
 
 }
