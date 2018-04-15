@@ -30,6 +30,8 @@
 #'                 block, and ZCTA geometry are supported.
 #' @param keep_geo_vars if TRUE, keeps all the variables from the Census
 #'                      shapefile obtained by tigris.  Defaults to FALSE.
+#' @param shift_geo if TRUE, returns geometry with Alaska and Hawaii shifted for thematic mapping of the entire US.
+#'                  Geometry was originally obtained from the albersusa R package.
 #' @param summary_var Character string of a "summary variable" from the ACS
 #'                    to be included
 #'                    in your output. Usually a variable (e.g. total population)
@@ -76,9 +78,23 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                     year = 2016, endyear = NULL,
                     output = "tidy",
                     state = NULL, county = NULL, geometry = FALSE, keep_geo_vars = FALSE,
+                    shift_geo = FALSE,
                     summary_var = NULL, key = NULL, moe_level = 90, survey = "acs5", ...) {
 
-  message("Please note: `get_acs()` now defaults to a year or endyear of 2016.")
+  if (!is.null(endyear)) {
+    year <- endyear
+    message("The `endyear` parameter is deprecated and will be removed in a future release.  Please use `year` instead.")
+  }
+
+  if (survey == "acs1") {
+    message(sprintf("Getting data from the %s 1-year ACS", year))
+  } else if (survey == "acs3") {
+    startyear <- year - 2
+    message(sprintf("Getting data from the %s-%s 3-year ACS", startyear, year))
+  } else if (survey == "acs5") {
+    startyear <- year - 4
+    message(sprintf("Getting data from the %s-%s 5-year ACS", startyear, year))
+  }
 
   if (Sys.getenv('CENSUS_API_KEY') != '') {
 
@@ -90,10 +106,6 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
   }
 
-  if (!is.null(endyear)) {
-    year <- endyear
-    message("The `endyear` parameter is deprecated and will be removed in a future release.  Please use `year` instead.")
-  }
 
   if (geography == "block") {
     stop("Block data are not available in the ACS. Use `get_decennial()` to access block data from the 2010 Census.", call. = FALSE)
@@ -107,8 +119,6 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     }
   }
 
-
-
   if (survey == "acs1") {
     if (year < 2012) {
       stop("The acs1 data is currently available beginning in 2012. Please select a different year.", call. = FALSE)
@@ -118,15 +128,20 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
   cache <- getOption("tigris_use_cache", FALSE)
 
-  if (! cache && geometry) {
-    message("Downloading feature geometry from the Census website.  To cache shapefiles for use in future sessions, set `options(tigris_use_cache = TRUE)`.")
+  if (geometry) {
+
+    if (shift_geo) {
+      message("Using feature geometry obtained from the albersusa package")
+    } else if (!shift_geo && !cache) {
+      message("Downloading feature geometry from the Census website.  To cache shapefiles for use in future sessions, set `options(tigris_use_cache = TRUE)`.")
+    }
+
   }
 
-  # if (survey == "acs3" || survey == "acs1") {
-  #   if (geography == "block group") {
-  #     warning("The acs1 and acs3 surveys do not support block group geographies. Please select 'acs5' for block groups.")
-  #   }
-  # }
+  if (shift_geo && !geometry) {
+    stop("`shift_geo` is only available when requesting feature geometry with `geometry = TRUE`",
+         call. = FALSE)
+  }
 
   if (is.null(variables) && is.null(table)) {
     stop("Either a vector of variables or an ACS table must be specified.", call. = FALSE)
@@ -285,7 +300,15 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
 
     # Convert missing values to NA
-    dat2[dat2 < -100000000] <- NA
+    dat2[dat2 == -111111111] <- NA
+    dat2[dat2 == -222222222] <- NA
+    dat2[dat2 == -333333333] <- NA
+    dat2[dat2 == -444444444] <- NA
+    dat2[dat2 == -555555555] <- NA
+    dat2[dat2 == -666666666] <- NA
+    dat2[dat2 == -777777777] <- NA
+    dat2[dat2 == -888888888] <- NA
+    dat2[dat2 == -999999999] <- NA
 
     # Change names if supplied
     if (!is.null(names(variables))) {
@@ -301,8 +324,16 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
     dat <- dat[!duplicated(names(dat), fromLast = TRUE)]
 
-    # Convert missing values values to NA
-    dat[dat < -100000000] <- NA
+    # Convert missing values to NA
+    dat[dat == -111111111] <- NA
+    dat[dat == -222222222] <- NA
+    dat[dat == -333333333] <- NA
+    dat[dat == -444444444] <- NA
+    dat[dat == -555555555] <- NA
+    dat[dat == -666666666] <- NA
+    dat[dat == -777777777] <- NA
+    dat[dat == -888888888] <- NA
+    dat[dat == -999999999] <- NA
 
     # Find MOE vars
     # moe_vars <- grep("*M", names(dat))
@@ -343,15 +374,52 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
       select(-NAME.y) %>%
       mutate(summary_moe = round(summary_moe * moe_factor, 0))
 
-    # Convert -555555555, -666666666, or -222222222 values to NA
-    dat2[dat2 < -100000000] <- NA
-
+    # Convert missing values to NA
+    dat2[dat2 == -111111111] <- NA
+    dat2[dat2 == -222222222] <- NA
+    dat2[dat2 == -333333333] <- NA
+    dat2[dat2 == -444444444] <- NA
+    dat2[dat2 == -555555555] <- NA
+    dat2[dat2 == -666666666] <- NA
+    dat2[dat2 == -777777777] <- NA
+    dat2[dat2 == -888888888] <- NA
+    dat2[dat2 == -999999999] <- NA
   }
 
   if (geometry) {
 
-    geom <- suppressMessages(use_tigris(geography = geography, year = year,
-                                        state = state, county = county, ...))
+    if (shift_geo) {
+
+      if (!is.null(state)) {
+        stop("`shift_geo` is only available when requesting geometry for the entire US", call. = FALSE)
+      }
+
+      message("Please note: Alaska and Hawaii are being shifted and are not to scale.")
+
+      if (geography == "state") {
+
+        geom <- tidycensus::state_laea
+
+      } else if (geography == "county") {
+
+        geom <- tidycensus::county_laea
+
+        if (year > 2014) {
+          # Account for change from Shannon County, SD to Oglala Lakota County
+          # and the new Kusilvak Census Area in AK
+          geom$GEOID[geom$GEOID == "46113"] <- "46102"
+          geom$GEOID[geom$GEOID == "02270"] <- "02158"
+        }
+
+      } else {
+        stop("`shift_geo` is only available for states and counties", call. = FALSE)
+      }
+
+    } else {
+
+      geom <- suppressMessages(use_tigris(geography = geography, year = year,
+                                          state = state, county = county, ...))
+    }
 
     if (! keep_geo_vars) {
 
@@ -370,19 +438,5 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     return(dat2)
 
   }
-
-  # Allow users to get data for specific state, or specific county
-  # Update for more geographies if requested
-  # if (geography == "state" && !is.null(state)) {
-  #   statev <- map_chr(state, function(x) { validate_state(x) })
-  #   return(dat2[dat2$GEOID %in% statev, ])
-  # }
-  #
-  # if (geography == "county" && !is.null(county)) {
-  #   state1 <- validate_state(state)
-  #   countyv <- map_chr(county, function(x) { validate_county(x) })
-  #   ctys <- paste0(state1, countyv)
-  #   return(dat2[dat2$GEOID %in% ctys, ])
-  # }
 
 }

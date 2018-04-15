@@ -29,6 +29,8 @@
 #'               columns.
 #' @param keep_geo_vars if TRUE, keeps all the variables from the Census
 #'                      shapefile obtained by tigris.  Defaults to FALSE.
+#' @param shift_geo if TRUE, returns geometry with Alaska and Hawaii shifted for thematic mapping of the entire US.
+#'                  Geometry was originally obtained from the albersusa R package.
 #' @param summary_var Character string of a "summary variable" from the decennial Census
 #'                    to be included in your output. Usually a variable (e.g. total population)
 #'                    that you'll want to use as a denominator or comparison.
@@ -58,7 +60,9 @@
 #' @export
 get_decennial <- function(geography, variables = NULL, table = NULL, cache_table = FALSE, year = 2010,
                           sumfile = "sf1", state = NULL, county = NULL, geometry = FALSE, output = "tidy",
-                          keep_geo_vars = FALSE, summary_var = NULL, key = NULL, ...) {
+                          keep_geo_vars = FALSE, shift_geo = FALSE, summary_var = NULL, key = NULL, ...) {
+
+  message(sprintf("Getting data from the %s decennial Census", year))
 
   if (Sys.getenv('CENSUS_API_KEY') != '') {
 
@@ -100,11 +104,29 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
          call. = FALSE)
   }
 
+  if (shift_geo && !geometry) {
+    stop("`shift_geo` is only available when requesting feature geometry with `geometry = TRUE`",
+         call. = FALSE)
+  }
+
   cache <- getOption("tigris_use_cache", FALSE)
 
-  if (!cache && geometry) {
-    message("Downloading feature geometry from the Census website.  To cache shapefiles for use in future sessions, set `options(tigris_use_cache = TRUE)`.")
+  if (geometry) {
+
+    if (shift_geo) {
+
+      if (year != 2010) {
+        stop("`shift_geo` is currently only available for 2010 data in `get_decennial()` due to county boundary changes.",
+             call. = FALSE)
+      }
+
+      message("Using feature geometry obtained from the albersusa package")
+    } else if (!shift_geo && !cache) {
+      message("Downloading feature geometry from the Census website.  To cache shapefiles for use in future sessions, set `options(tigris_use_cache = TRUE)`.")
+    }
+
   }
+
 
   # Allow users to get all block groups in a state
   if (geography == "block group" && is.null(county)) {
@@ -247,8 +269,32 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
 
   if (geometry) {
 
-    geom <- suppressMessages(use_tigris(geography = geography, year = year,
-                       state = state, county = county, ...))
+    if (shift_geo) {
+
+
+      if (!is.null(state)) {
+        stop("`shift_geo` is only available when requesting geometry for the entire US", call. = FALSE)
+      }
+
+      message("Please note: Alaska and Hawaii are being shifted and are not to scale.")
+
+      if (geography == "state") {
+
+        geom <- tidycensus::state_laea
+
+      } else if (geography == "county") {
+
+        geom <- tidycensus::county_laea
+
+      } else {
+        stop("`shift_geo` is only available for states and counties", call. = FALSE)
+      }
+
+    } else {
+
+      geom <- suppressMessages(use_tigris(geography = geography, year = year,
+                                          state = state, county = county, ...))
+    }
 
     if (! keep_geo_vars) {
 
