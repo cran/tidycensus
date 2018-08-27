@@ -30,6 +30,10 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
       }
     }
 
+    if (year == 2014) {
+      st <- st_zm(st)
+    }
+
     return(st)
 
   } else if (geography == "county") {
@@ -51,6 +55,10 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
           summarize() %>%
           st_cast("MULTIPOLYGON")
       }
+    }
+
+    if (year == 2014) {
+      ct <- st_zm(ct)
     }
 
     return(ct)
@@ -77,6 +85,10 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
         st_cast("MULTIPOLYGON")
     }
 
+    if (year == 2014) {
+      tr <- st_zm(tr)
+    }
+
     return(tr)
 
   } else if (geography == "block group") {
@@ -99,20 +111,27 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
         st_cast("MULTIPOLYGON")
     }
 
+    if (year == 2014) {
+      bg <- st_zm(bg)
+    }
+
     return(bg)
 
   } else if (geography %in% c("zcta", "zip code tabulation area")) {
 
-    # For right now, to get it to work, it has to be cb = FALSE for 2010
+    # For right now, to get it to work, it has to be cb = FALSE for 2010, 2011, and 2012
     # Re-visit this in the future.
 
-    if (year == 2010) cb <- FALSE
+    if (year %in% 2010:2012) cb <- FALSE
+
+    # No ZCTA geometry for 2011, so use 2010 instead
+    if (year == 2011) year <- 2010
 
     z <- zctas(cb = cb, starts_with = starts_with, year = year,
                class = "sf", state = state)
 
-    if (year %in% c(2000, 2010)) {
-      z <- mutate(z, GEOID = NAME)
+    if (year == 2000) {
+      z <- rename(z, GEOID = GEOID00)
     } else {
       z <- rename(z, GEOID = GEOID10)
     }
@@ -242,13 +261,9 @@ variables_from_table_acs <- function(table, year, survey, cache_table) {
   specific <- paste0(table, "_")
 
   # Find all variables that match the table
-  vars <- df %>%
-    filter(grepl(specific, name)) %>%
-    pull(name)
+  sub <- df[grepl(specific, df$name), ]
 
-  vars <- substr(vars, 1, nchar(vars) - 1)
-
-  vars <- unique(vars)
+  vars <- sub$name
 
   return(vars)
 

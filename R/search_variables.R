@@ -27,17 +27,22 @@ load_variables <- function(year, dataset, cache = FALSE) {
   }
 
   if (grepl("acs1", dataset) || grepl("acs5", dataset)) {
-    if (year > 2014) {
-      dataset <- paste0("acs/", dataset)
-    }
+    dataset <- paste0("acs/", dataset)
   }
 
   get_dataset <- function(d) {
+
+    # Account for URL change for 2010 decennial Census
+    if (year == 2010 && dataset == "sf1") {
+      d <- paste0("dec/", d)
+    }
+
     set <- paste(year, d, sep = "/")
 
     # If ACS, use JSON parsing to speed things up
     if (grepl("acs[135]", d)) {
-      url <- paste("http://api.census.gov/data",
+
+      url <- paste("https://api.census.gov/data",
                    set,
                    "variables.json", sep = "/")
 
@@ -53,9 +58,18 @@ load_variables <- function(year, dataset, cache = FALSE) {
 
       out <- dat[,1:3]
 
-      return(tbl_df(out))
+      names(out) <- tolower(names(out))
+
+      out1 <- out[grepl("^B[0-9]|^C[0-9]|^DP[0-9]|^S[0-9]|^P[0-9]|^H[0-9]", out$name), ]
+
+      out1$name <- str_replace(out1$name, "E$|M$", "")
+
+      out2 <- out1[!grepl("Margin Of Error|Margin of Error", out1$label), ]
+
+      return(tbl_df(out2))
     # Otherwise use HTML scraping as JSON is not available for decennial Census
     } else {
+
       url <- paste("http://api.census.gov/data",
                    set,
                    "variables.html", sep = "/")
@@ -73,7 +87,13 @@ load_variables <- function(year, dataset, cache = FALSE) {
 
       names(out) <- tolower(names(out))
 
-      return(tbl_df(out))
+      out1 <- out[grepl("^B[0-9]|^C[0-9]|^DP[0-9]|^S[0-9]|^P[0-9]|^H[0-9]", out$name), ]
+
+      out1$name <- str_replace(out1$name, "E$|M$", "")
+
+      out2 <- out1[!grepl("Margin Of Error|Margin of Error", out1$label), ]
+
+      return(tbl_df(out2))
 
     }
 
@@ -88,7 +108,29 @@ load_variables <- function(year, dataset, cache = FALSE) {
     if (file.exists(cache_dir)) {
       file_loc <- file.path(cache_dir, rds)
       if (file.exists(file_loc)) {
-        return(read_rds(file_loc))
+
+        out <- read_rds(file_loc)
+
+        # For 2010 decennial Census, must get again if old
+        if (year == 2010 && dataset == "sf1") {
+
+          # Check if an erroring variable is in the file
+          if ("H00010001" %in% out$name) {
+            df <- get_dataset(dataset)
+            write_rds(df, file_loc)
+            return(df)
+
+          }
+
+        }
+
+
+        out1 <- out[grepl("^B[0-9]|^C[0-9]|^DP[0-9]|^S[0-9]|^P[0-9]|^H[0-9]", out$name), ]
+
+        out1$name <- str_replace(out1$name, "E$|M$", "")
+
+        out2 <- out1[!grepl("Margin Of Error|Margin of Error", out1$label), ]
+        return(out2)
       } else {
         df <- get_dataset(dataset)
         write_rds(df, file_loc)

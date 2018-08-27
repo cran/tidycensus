@@ -29,6 +29,10 @@ fips_state_table <- structure(list(abb = c("ak", "al", "ar", "as", "az", "ca", "
 )), .Names = c("abb", "fips", "name"), row.names = c(NA, -56L
 ), class = "data.frame")
 
+population_estimates_variables <- c("POP", "DENSITY")
+components_estimates_variables <- c("BIRTHS", "DEATHS","DOMESTICMIG","INTERNATIONALMIG","NATURALINC","NETMIG","RBIRTH","RDEATH","RDOMESTICMIG","RINTERNATIONALMIG","RNATURALINC","RNETMIG")
+housing_estimates_variables <- "HUEST"
+
 
 .onLoad <- function(libname, pkgname) {
   utils::data("fips_codes", package=pkgname, envir=parent.env(environment()))
@@ -38,4 +42,5 @@ fips_state_table <- structure(list(abb = c("ak", "al", "ar", "as", "az", "ca", "
 utils::globalVariables(c("variable", "value", "GEOID", "NAME", "type", "moe",
                          ".", "NAME.y", "summary_moe", "TRACTBASE", "TRACT",
                          "ANPSADPI", "BLKGROUP", "BLKGRP", "BLKIDFP00", "CO", "COUNTY",
-                         "GEOID10", "ST", "STATE", "TRACTSUF", "name", ".data"))
+                         "GEOID10", "ST", "STATE", "TRACTSUF", "name", ".data", "GEONAME",
+                         "GEOID00", "POP", "PERIOD", "DATE"))

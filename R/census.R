@@ -45,10 +45,10 @@
 #' library(tidyverse)
 #' library(viridis)
 #' census_api_key("YOUR KEY GOES HERE")
-#' vars10 <- c("P0050003", "P0050004", "P0050006", "P0040003")
+#' vars10 <- c("P005003", "P005004", "P005006", "P004003")
 #'
 #' il <- get_decennial(geography = "county", variables = vars10, year = 2010,
-#'                     summary_var = "P0010001", state = "IL", geometry = TRUE) %>%
+#'                     summary_var = "P001001", state = "IL", geometry = TRUE) %>%
 #'   mutate(pct = 100 * (value / summary_value))
 #'
 #' ggplot(il, aes(fill = pct, color = pct)) +
@@ -87,10 +87,10 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
     stop("At the moment, block data is only available for 2010. I recommend using NHGIS (http://www.nhgis.org) and the ipumsr package for block data for other years.", call. = FALSE)
   }
 
-  if (geography %in% c("tract", "block group") && year == 1990 && is.null(county)) {
-    stop("At the moment, tracts and block groups for 1990 require specifying a county.",
-         call. = FALSE)
-  }
+  # if (geography %in% c("tract", "block group") && year == 1990 && is.null(county)) {
+  #   stop("At the moment, tracts and block groups for 1990 require specifying a county.",
+  #        call. = FALSE)
+  # }
 
   if (geography == "zcta") geography <- "zip code tabulation area"
 
@@ -132,7 +132,12 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
   if (geography == "block group" && is.null(county)) {
     st <- suppressMessages(validate_state(state))
 
-    county <- fips_codes[fips_codes$state_code == st, ]$county_code
+    # Get year-specific county IDs from tigris
+
+    cty_year <- suppressMessages(counties(state = st, cb = TRUE,
+                                          year = year, class = "sf"))
+
+    county <- cty_year$COUNTYFP
 
 
   }
@@ -302,10 +307,15 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
 
     }
 
-    # Merge and return the output
-    out <- inner_join(geom, dat2, by = "GEOID") %>%
-      as_tibble() %>%
-      st_as_sf()
+    if (shift_geo) {
+      out <- inner_join(geom, dat2, by = "GEOID") %>%
+        as_tibble() %>%
+        st_as_sf()
+    } else {
+      out <- right_join(geom, dat2, by = "GEOID") %>%
+        as_tibble() %>%
+        st_as_sf()
+    }
 
     return(out)
 
