@@ -5,7 +5,7 @@
 \title{Obtain data and feature geometry for the five-year American Community Survey}
 \usage{
 get_acs(geography, variables = NULL, table = NULL,
-  cache_table = FALSE, year = 2016, endyear = NULL,
+  cache_table = FALSE, year = 2017, endyear = NULL,
   output = "tidy", state = NULL, county = NULL, geometry = FALSE,
   keep_geo_vars = FALSE, shift_geo = FALSE, summary_var = NULL,
   key = NULL, moe_level = 90, survey = "acs5", ...)
@@ -36,7 +36,7 @@ enumeration unit-variable combination, or "wide" in which each
 row represents an enumeration unit and the variables are in the
 columns.}
 
-\item{state}{The state for which you are requesting data. State
+\item{state}{An optional vector of states for which you are requesting data. State
 names, postal codes, and FIPS codes are accepted.
 Defaults to NULL.}
 

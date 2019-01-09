@@ -18,7 +18,7 @@
 #'               enumeration unit-variable combination, or "wide" in which each
 #'               row represents an enumeration unit and the variables are in the
 #'               columns.
-#' @param state The state for which you are requesting data. State
+#' @param state An optional vector of states for which you are requesting data. State
 #'              names, postal codes, and FIPS codes are accepted.
 #'              Defaults to NULL.
 #' @param county The county for which you are requesting data. County names and
@@ -75,7 +75,7 @@
 #' }
 #' @export
 get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FALSE,
-                    year = 2016, endyear = NULL,
+                    year = 2017, endyear = NULL,
                     output = "tidy",
                     state = NULL, county = NULL, geometry = FALSE, keep_geo_vars = FALSE,
                     shift_geo = FALSE,
@@ -153,6 +153,11 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
   }
 
   if (geography == "zcta") geography <- "zip code tabulation area"
+
+  if (geography == "zip code tabulation area" && (!is.null(state) || !is.null(county))) {
+    stop("ZCTAs can only be requested for the entire country, not within states or counties.",
+         call. = FALSE)
+  }
 
   # Allow users to get all block groups in a state
 
@@ -261,7 +266,14 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
   # Logic for fetching data tables
   if (!is.null(table)) {
-    variables <- variables_from_table_acs(table, year, survey, cache_table)
+    if (grepl("^S[0-9].", table)) {
+      survey2 <- paste0(survey, "/subject")
+    } else if (grepl("^DP[0-9].", table)) {
+      survey2 <- paste0(survey, "/profile")
+    } else {
+      survey2 <- survey
+    }
+    variables <- variables_from_table_acs(table, year, survey2, cache_table)
   }
 
 

@@ -123,9 +123,18 @@ load_data_acs <- function(geography, formatted_variables, key, year, state = NUL
   #   survey <- "acs/acs5"
   # }
 
-  base <- paste("https://api.census.gov/data",
-                 as.character(year), "acs",
-                 survey, sep = "/")
+  if (year == 2009) {
+    # Only the old endpoint works right now for 2005-2009
+    base <- paste("https://api.census.gov/data",
+                  as.character(year),
+                  survey, sep = "/")
+  } else {
+    base <- paste("https://api.census.gov/data",
+                  as.character(year), "acs",
+                  survey, sep = "/")
+  }
+
+
 
   if (grepl("^DP", formatted_variables)) {
     message("Using the ACS Data Profile")
@@ -134,15 +143,7 @@ load_data_acs <- function(geography, formatted_variables, key, year, state = NUL
 
   if (grepl("^S[0-9].", formatted_variables)) {
     message("Using the ACS Subject Tables")
-    if (survey == "acs1") {
-      base <- paste("https://api.census.gov/data",
-                    as.character(year),
-                    "subject",
-                    sep = "/")
-    } else {
-      base <- paste0(base, "/subject")
-
-    }
+    base <- paste0(base, "/subject")
   }
 
   for_area <- paste0(geography, ":*")
@@ -240,9 +241,15 @@ load_data_acs <- function(geography, formatted_variables, key, year, state = NUL
 
   content <- content(call, as = "text")
 
-  dat <- tbl_df(fromJSON(content))
+  if (grepl("You included a key with this request", content)) {
+    stop("You have supplied an invalid or inactive API key. To obtain a valid API key, visit https://api.census.gov/data/key_signup.html. To activate your key, be sure to click the link provided to you in the email from the Census Bureau that contained your key.", call. = FALSE)
+  }
+
+  dat <- fromJSON(content)
 
   colnames(dat) <- dat[1,]
+
+  dat <- as_tibble(dat)
 
   dat <- dat[-1,]
 
@@ -384,6 +391,10 @@ load_data_decennial <- function(geography, variables, key, year,
 
   content <- content(call, as = "text")
 
+  if (grepl("You included a key with this request", content)) {
+    stop("You have supplied an invalid or inactive API key. To obtain a valid API key, visit https://api.census.gov/data/key_signup.html. To activate your key, be sure to click the link provided to you in the email from the Census Bureau that contained your key.", call. = FALSE)
+  }
+
   # Fix issue in SF3 2000 API - https://github.com/walkerke/tidycensus/issues/22
   if (year == 2000 && sumfile == "sf3") {
     content <- str_replace(content, 'O"Brien', "O'Brien")
@@ -393,9 +404,11 @@ load_data_decennial <- function(geography, variables, key, year,
 
   }
 
-  dat <- tbl_df(fromJSON(content))
+  dat <- fromJSON(content)
 
   colnames(dat) <- dat[1,]
+
+  dat <- as_tibble(dat)
 
   dat <- dat[-1,]
 
@@ -563,9 +576,15 @@ load_data_estimates <- function(geography, product = NULL, variables = NULL,
 
   content <- content(call, as = "text")
 
-  dat <- tbl_df(fromJSON(content))
+  if (grepl("You included a key with this request", content)) {
+    stop("You have supplied an invalid or inactive API key. To obtain a valid API key, visit https://api.census.gov/data/key_signup.html. To activate your key, be sure to click the link provided to you in the email from the Census Bureau that contained your key.", call. = FALSE)
+  }
+
+  dat <- fromJSON(content)
 
   colnames(dat) <- dat[1,]
+
+  dat <- as_tibble(dat)
 
   dat <- dat[-1,]
 

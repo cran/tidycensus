@@ -3,7 +3,7 @@
 
 
 use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
-                       state = NULL, county = NULL, starts_with = NULL) {
+                       state = NULL, county = NULL, starts_with = NULL, ...) {
 
   if (year %in% 2011:2012) {
     cb <- FALSE
@@ -11,7 +11,7 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
 
   if (geography == "state") {
 
-    st <- states(cb = cb, resolution = resolution, year = year, class = "sf")
+    st <- states(cb = cb, resolution = resolution, year = year, class = "sf", ...)
 
     if (year == 1990) {
       st <- mutate(st, GEOID = ST)
@@ -39,7 +39,7 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
   } else if (geography == "county") {
 
     ct <- counties(cb = cb, state = state, resolution = resolution, year = year,
-             class = "sf")
+             class = "sf", ...)
 
     if (year == 1990) {
       ct <- mutate(ct, GEOID = paste0(ST, CO))
@@ -66,7 +66,7 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
   } else if (geography == "tract") {
 
     tr <- tracts(cb = cb, state = state, county = county, year = year,
-           class = "sf")
+           class = "sf", ...)
 
     if (year == 1990) {
       tr <- tr %>%
@@ -94,7 +94,7 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
   } else if (geography == "block group") {
 
     bg <- block_groups(cb = cb, state = state, county = county, year = year,
-                 class = "sf")
+                 class = "sf", ...)
 
     if (year == 2000) {
       bg <- bg %>%
@@ -128,7 +128,7 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
     if (year == 2011) year <- 2010
 
     z <- zctas(cb = cb, starts_with = starts_with, year = year,
-               class = "sf", state = state)
+               class = "sf", state = state, ...)
 
     if (year == 2000) {
       z <- rename(z, GEOID = GEOID00)
@@ -140,7 +140,7 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
 
   } else if (geography == "block") {
 
-    bl <- blocks(state = state, county = county, year = year, class = "sf")
+    bl <- blocks(state = state, county = county, year = year, class = "sf", ...)
 
     if (year > 2000) {
       bl <- rename(bl, GEOID = GEOID10)
@@ -232,14 +232,12 @@ census_api_key <- function(key, overwrite = FALSE, install = FALSE){
 # Function to generate a vector of variables from an ACS table
 variables_from_table_acs <- function(table, year, survey, cache_table) {
 
-  if (grepl("^((DP)|(S[0-9].))", table)) {
-    stop("The `table` parameter is only available for ACS detailed tables.", call. = FALSE)
-  }
-
   # Look to see if table exists in cache dir
   cache_dir <- user_cache_dir("tidycensus")
 
   dset <- paste0(survey, "_", year, ".rds")
+
+  dset <- gsub("/", "_", dset)
 
 
 
@@ -272,10 +270,6 @@ variables_from_table_acs <- function(table, year, survey, cache_table) {
 
 # Function to generate a vector of variables from an Census table
 variables_from_table_decennial <- function(table, year, sumfile, cache_table) {
-
-  if (grepl("^((DP)|(S[0-9].))", table)) {
-    stop("The `table` parameter is only available for ACS detailed tables.", call. = FALSE)
-  }
 
   # Look to see if table exists in cache dir
   cache_dir <- user_cache_dir("tidycensus")
