@@ -146,11 +146,23 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
   # for block groups - take care of this under the hood by having the function
   # call itself and return the result
   if (geography == "tract" && length(state) > 1) {
-    mc <- match.call(expand.dots = TRUE)
+    # mc <- match.call(expand.dots = TRUE)
     if (geometry) {
-      result <- map(state, function(x) {
-        mc[["state"]] <- x
-        eval(mc)
+      result <- map(state, ~{
+        suppressMessages(get_decennial(geography = geography,
+                                       variables = variables,
+                                       table = table,
+                                       cache_table = cache_table,
+                                       year = year,
+                                       sumfile = sumfile,
+                                       output = output,
+                                       state = .x,
+                                       county = county,
+                                       geometry = geometry,
+                                       keep_geo_vars = keep_geo_vars,
+                                       shift_geo = FALSE,
+                                       summary_var = summary_var,
+                                       key = key))
       }) %>%
         reduce(rbind)
       geoms <- unique(st_geometry_type(result))
@@ -161,20 +173,44 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
         as_tibble() %>%
         st_as_sf()
     } else {
-      result <- map_df(state, function(x) {
-        mc[["state"]] <- x
-        eval(mc)
+      result <- map_df(state, ~{
+        suppressMessages(get_decennial(geography = geography,
+                                       variables = variables,
+                                       table = table,
+                                       cache_table = cache_table,
+                                       year = year,
+                                       sumfile = sumfile,
+                                       output = output,
+                                       state = .x,
+                                       county = county,
+                                       geometry = geometry,
+                                       keep_geo_vars = keep_geo_vars,
+                                       shift_geo = FALSE,
+                                       summary_var = summary_var,
+                                       key = key))
       })
     }
     return(result)
   }
 
   if ((geography %in% c("block group", "block") && length(county) > 1) || (geography == "tract" && length(county) > 1)) {
-    mc <- match.call(expand.dots = TRUE)
+    # mc <- match.call(expand.dots = TRUE)
     if (geometry) {
-      result <- map(county, function(x) {
-        mc[["county"]] <- x
-        eval(mc)
+      result <- map(county, ~{
+        suppressMessages(get_decennial(geography = geography,
+                                       variables = variables,
+                                       table = table,
+                                       cache_table = cache_table,
+                                       year = year,
+                                       sumfile = sumfile,
+                                       output = output,
+                                       state = state,
+                                       county = .x,
+                                       geometry = geometry,
+                                       keep_geo_vars = keep_geo_vars,
+                                       shift_geo = FALSE,
+                                       summary_var = summary_var,
+                                       key = key))
       }) %>%
         reduce(rbind)
       geoms <- unique(st_geometry_type(result))
@@ -185,9 +221,21 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
         as_tibble() %>%
         st_as_sf()
     } else {
-      result <- map_df(county, function(x) {
-        mc[["county"]] <- x
-        eval(mc)
+      result <- map_df(county, ~{
+        suppressMessages(get_decennial(geography = geography,
+                                       variables = variables,
+                                       table = table,
+                                       cache_table = cache_table,
+                                       year = year,
+                                       sumfile = sumfile,
+                                       output = output,
+                                       state = state,
+                                       county = .x,
+                                       geometry = geometry,
+                                       keep_geo_vars = keep_geo_vars,
+                                       shift_geo = FALSE,
+                                       summary_var = summary_var,
+                                       key = key))
       })
     }
     return(result)

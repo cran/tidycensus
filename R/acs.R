@@ -11,8 +11,8 @@
 #'                    Defaults to FALSE; if TRUE, only needs to be called once per
 #'                    dataset.  If variables dataset is already cached via the
 #'                    \code{load_variables} function, this can be bypassed.
-#' @param year The year, or endyear, of the ACS sample. 2010 through 2016 are
-#'                available. Defaults to 2016.
+#' @param year The year, or endyear, of the ACS sample. 2010 through 2017 are
+#'                available. Defaults to 2017.
 #' @param endyear Deprecated and will be removed in a future release.
 #' @param output One of "tidy" (the default) in which each row represents an
 #'               enumeration unit-variable combination, or "wide" in which each
@@ -183,11 +183,24 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
   # for block groups - take care of this under the hood by having the function
   # call itself and return the result
   if (geography == "tract" && length(state) > 1 && year > 2014) {
-    mc <- match.call(expand.dots = TRUE)
+    message("Fetching tract data by state and combining the result.")
+    # mc <- match.call(expand.dots = TRUE)
     if (geometry) {
-      result <- map(state, function(x) {
-        mc[["state"]] <- x
-        eval(mc)
+      result <- map(state,~{
+        suppressMessages(get_acs(geography = geography,
+                variables = variables,
+                table = table,
+                cache_table = cache_table,
+                year = year,
+                output = output,
+                state = .x,
+                county = county,
+                summary_var = summary_var,
+                geometry = geometry,
+                keep_geo_vars = keep_geo_vars,
+                shift_geo = FALSE,
+                key = key,
+                moe_level = moe_level))
       }) %>%
         reduce(rbind)
       geoms <- unique(st_geometry_type(result))
@@ -198,20 +211,44 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
         as_tibble() %>%
         st_as_sf()
     } else {
-      result <- map_df(state, function(x) {
-        mc[["state"]] <- x
-        eval(mc)
+      result <- map_df(state, ~{
+        suppressMessages(get_acs(geography = geography,
+                variables = variables,
+                table = table,
+                cache_table = cache_table,
+                year = year,
+                output = output,
+                state = .x,
+                county = county,
+                summary_var = summary_var,
+                geometry = geometry,
+                keep_geo_vars = keep_geo_vars,
+                shift_geo = FALSE,
+                key = key,
+                moe_level = moe_level))
       })
     }
     return(result)
   }
 
   if ((geography == "block group" && length(county) > 1) || (geography == "tract" && length(county) > 1 && year < 2015)) {
-    mc <- match.call(expand.dots = TRUE)
+    # mc <- match.call(expand.dots = TRUE)
     if (geometry) {
-      result <- map(county, function(x) {
-        mc[["county"]] <- x
-        eval(mc)
+      result <- map(county, ~{
+        suppressMessages(get_acs(geography = geography,
+                variables = variables,
+                table = table,
+                cache_table = cache_table,
+                year = year,
+                output = output,
+                state = state,
+                county = .x,
+                summary_var = summary_var,
+                geometry = geometry,
+                keep_geo_vars = keep_geo_vars,
+                shift_geo = FALSE,
+                key = key,
+                moe_level = moe_level))
       }) %>%
         reduce(rbind)
       geoms <- unique(st_geometry_type(result))
@@ -222,20 +259,46 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
         as_tibble() %>%
         st_as_sf()
     } else {
-      result <- map_df(county, function(x) {
-        mc[["county"]] <- x
-        eval(mc)
+      result <- map_df(county, ~{
+        suppressMessages(get_acs(geography = geography,
+                variables = variables,
+                table = table,
+                cache_table = cache_table,
+                year = year,
+                output = output,
+                state = state,
+                county = .x,
+                summary_var = summary_var,
+                geometry = geometry,
+                keep_geo_vars = keep_geo_vars,
+                shift_geo = FALSE,
+                key = key,
+                moe_level = moe_level))
       })
     }
     return(result)
   }
 
   if (geography == "block group" && length(county) > 1) {
-    mc <- match.call(expand.dots = TRUE)
+    # mc <- match.call(expand.dots = TRUE)
     if (geometry) {
-      result <- map(county, function(x) {
-        mc[["county"]] <- x
-        eval(mc)
+      message("Fetching block group data by county and combining the result.")
+
+      result <- map(county, ~{
+        suppressMessages(get_acs(geography = geography,
+                variables = variables,
+                table = table,
+                cache_table = cache_table,
+                year = year,
+                output = output,
+                state = state,
+                county = .x,
+                summary_var = summary_var,
+                geometry = geometry,
+                keep_geo_vars = keep_geo_vars,
+                shift_geo = FALSE,
+                key = key,
+                moe_level = moe_level))
       }) %>%
         reduce(rbind)
       geoms <- unique(st_geometry_type(result))
@@ -246,9 +309,23 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
         as_tibble() %>%
         st_as_sf()
     } else {
-      result <- map_df(county, function(x) {
-        mc[["county"]] <- x
-        eval(mc)
+      message("Fetching block group data by county and combining the result.")
+
+      result <- map_df(county, ~{
+        suppressMessages(get_acs(geography = geography,
+                variables = variables,
+                table = table,
+                cache_table = cache_table,
+                year = year,
+                output = output,
+                state = state,
+                county = .x,
+                summary_var = summary_var,
+                geometry = geometry,
+                keep_geo_vars = keep_geo_vars,
+                shift_geo = FALSE,
+                key = key,
+                moe_level = moe_level))
       })
     }
     return(result)
@@ -285,7 +362,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
       vars <- format_variables_acs(x)
       suppressWarnings(load_data_acs(geography, vars, key, year, state, county, survey))
     }) %>%
-      bind_cols()
+    Reduce(function(x, y) full_join(x, y, by = "GEOID", suffix = c("", ".y")), .)
   } else {
     vars <- format_variables_acs(variables)
 
