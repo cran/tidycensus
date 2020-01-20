@@ -3,9 +3,10 @@
 #' @param geography The geography of your data.
 #' @param variables Character string or vector of character strings of variable
 #'                  IDs.
-#' @param table   The Census table for which you would like to request all variables.  Uses
+#' @param table   The Census table for which you would like to request all variables. Uses
 #'                lookup tables to identify the variables; performs faster when variable
 #'                table already exists through \code{load_variables(cache = TRUE)}.
+#'                Only one table may be requested per call.
 #' @param cache_table Whether or not to cache table names for faster future access.
 #'                    Defaults to FALSE; if TRUE, only needs to be called once per
 #'                    dataset.  If variables dataset is already cached via the
@@ -36,6 +37,10 @@
 #'                    that you'll want to use as a denominator or comparison.
 #' @param key Your Census API key.
 #'            Obtain one at \url{http://api.census.gov/data/key_signup.html}
+#' @param show_call if TRUE, display call made to Census API. This can be very useful
+#'                  in debugging and determining if error messages returned are
+#'                  due to tidycensus or the Census API. Copy to the API call into
+#'                  a browser and see what is returned by the API directly. Defaults to FALSE.
 #' @param ... Other keyword arguments
 #'
 #' @return a tibble or sf tibble of decennial Census data
@@ -60,7 +65,14 @@
 #' @export
 get_decennial <- function(geography, variables = NULL, table = NULL, cache_table = FALSE, year = 2010,
                           sumfile = "sf1", state = NULL, county = NULL, geometry = FALSE, output = "tidy",
-                          keep_geo_vars = FALSE, shift_geo = FALSE, summary_var = NULL, key = NULL, ...) {
+                          keep_geo_vars = FALSE, shift_geo = FALSE, summary_var = NULL, key = NULL,
+                          show_call = FALSE, ...) {
+
+  # Right now, block groups are only available by tract, which tidycensus won't support
+  # Stop if this is called
+  if (geography == "block group") {
+    stop("At the moment block groups are not supported by `get_decennial()` due to API limitations. We recommend downloading data from NHGIS until this is resolved.")
+  }
 
   message(sprintf("Getting data from the %s decennial Census", year))
 
@@ -83,6 +95,14 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
          call. = FALSE)
   }
 
+  if (length(table) > 1) {
+    stop("Only one table may be requested per call.", call. = FALSE)
+  }
+
+  if (sumfile == "sf3" && year > 2001) {
+    stop("Summary File 3 was not released in 2010. Use Summary File 1 or tables from the American Community Survey via get_acs() instead.", call. = FALSE)
+  }
+
   if (geography == "block" && year != 2010) {
     stop("At the moment, block data is only available for 2010. I recommend using NHGIS (http://www.nhgis.org) and the ipumsr package for block data for other years.", call. = FALSE)
   }
@@ -92,17 +112,23 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
   #        call. = FALSE)
   # }
 
+  if (geography == "cbsa") geography <- "metropolitan statistical area/micropolitan statistical area"
+
   if (geography == "zcta") geography <- "zip code tabulation area"
 
-  if (geography == "zip code tabulation area" && is.null(state)) {
-    stop("ZCTA data for the decennial Census is only available by state from tidycensus.",
-         call. = FALSE)
+  if (geography == "zip code tabulation area" && !is.null(state)) {
+    geography <- "zip code tabulation area (or part)"
   }
 
-  if (geography == "zip code tabulation area" && geometry) {
-    stop("Linked ZCTA geometry and attributes for `get_decennial` are not currently available in tidycensus.",
-         call. = FALSE)
-  }
+  # if (geography == "zip code tabulation area" && is.null(state)) {
+  #   stop("ZCTA data for the decennial Census is only available by state from tidycensus.",
+  #        call. = FALSE)
+  # }
+  #
+  # if (geography == "zip code tabulation area" && geometry) {
+  #   stop("Linked ZCTA geometry and attributes for `get_decennial` are not currently available in tidycensus.",
+  #        call. = FALSE)
+  # }
 
   if (shift_geo && !geometry) {
     stop("`shift_geo` is only available when requesting feature geometry with `geometry = TRUE`",
@@ -128,7 +154,9 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
   }
 
 
+
   # Allow users to get all block groups in a state
+  # Keep this here when county wildcards for block groups are fixed
   if (geography == "block group" && is.null(county)) {
     st <- suppressMessages(validate_state(state))
 
@@ -142,6 +170,8 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
 
   }
 
+  insist_get_decennial <- purrr::insistently(get_decennial)
+
   # If more than one state specified for tracts - or more than one county
   # for block groups - take care of this under the hood by having the function
   # call itself and return the result
@@ -149,20 +179,23 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
     # mc <- match.call(expand.dots = TRUE)
     if (geometry) {
       result <- map(state, ~{
-        suppressMessages(get_decennial(geography = geography,
-                                       variables = variables,
-                                       table = table,
-                                       cache_table = cache_table,
-                                       year = year,
-                                       sumfile = sumfile,
-                                       output = output,
-                                       state = .x,
-                                       county = county,
-                                       geometry = geometry,
-                                       keep_geo_vars = keep_geo_vars,
-                                       shift_geo = FALSE,
-                                       summary_var = summary_var,
-                                       key = key))
+        suppressMessages(
+          insist_get_decennial(geography = geography,
+                               variables = variables,
+                               table = table,
+                               cache_table = cache_table,
+                               year = year,
+                               sumfile = sumfile,
+                               output = output,
+                               state = .x,
+                               county = county,
+                               geometry = geometry,
+                               keep_geo_vars = keep_geo_vars,
+                               shift_geo = FALSE,
+                               summary_var = summary_var,
+                               key = key,
+                               show_call = show_call)
+          )
       }) %>%
         reduce(rbind)
       geoms <- unique(st_geometry_type(result))
@@ -174,20 +207,22 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
         st_as_sf()
     } else {
       result <- map_df(state, ~{
-        suppressMessages(get_decennial(geography = geography,
-                                       variables = variables,
-                                       table = table,
-                                       cache_table = cache_table,
-                                       year = year,
-                                       sumfile = sumfile,
-                                       output = output,
-                                       state = .x,
-                                       county = county,
-                                       geometry = geometry,
-                                       keep_geo_vars = keep_geo_vars,
-                                       shift_geo = FALSE,
-                                       summary_var = summary_var,
-                                       key = key))
+        suppressMessages(
+          insist_get_decennial(geography = geography,
+                               variables = variables,
+                               table = table,
+                               cache_table = cache_table,
+                               year = year,
+                               sumfile = sumfile,
+                               output = output,
+                               state = .x,
+                               county = county,
+                               geometry = geometry,
+                               keep_geo_vars = keep_geo_vars,
+                               shift_geo = FALSE,
+                               summary_var = summary_var,
+                               key = key,
+                               show_call = show_call))
       })
     }
     return(result)
@@ -197,20 +232,22 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
     # mc <- match.call(expand.dots = TRUE)
     if (geometry) {
       result <- map(county, ~{
-        suppressMessages(get_decennial(geography = geography,
-                                       variables = variables,
-                                       table = table,
-                                       cache_table = cache_table,
-                                       year = year,
-                                       sumfile = sumfile,
-                                       output = output,
-                                       state = state,
-                                       county = .x,
-                                       geometry = geometry,
-                                       keep_geo_vars = keep_geo_vars,
-                                       shift_geo = FALSE,
-                                       summary_var = summary_var,
-                                       key = key))
+        suppressMessages(
+          insist_get_decennial(geography = geography,
+                               variables = variables,
+                               table = table,
+                               cache_table = cache_table,
+                               year = year,
+                               sumfile = sumfile,
+                               output = output,
+                               state = state,
+                               county = .x,
+                               geometry = geometry,
+                               keep_geo_vars = keep_geo_vars,
+                               shift_geo = FALSE,
+                               summary_var = summary_var,
+                               key = key,
+                               show_call = show_call))
       }) %>%
         reduce(rbind)
       geoms <- unique(st_geometry_type(result))
@@ -222,20 +259,22 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
         st_as_sf()
     } else {
       result <- map_df(county, ~{
-        suppressMessages(get_decennial(geography = geography,
-                                       variables = variables,
-                                       table = table,
-                                       cache_table = cache_table,
-                                       year = year,
-                                       sumfile = sumfile,
-                                       output = output,
-                                       state = state,
-                                       county = .x,
-                                       geometry = geometry,
-                                       keep_geo_vars = keep_geo_vars,
-                                       shift_geo = FALSE,
-                                       summary_var = summary_var,
-                                       key = key))
+        suppressMessages(
+          insist_get_decennial(geography = geography,
+                               variables = variables,
+                               table = table,
+                               cache_table = cache_table,
+                               year = year,
+                               sumfile = sumfile,
+                               output = output,
+                               state = state,
+                               county = .x,
+                               geometry = geometry,
+                               keep_geo_vars = keep_geo_vars,
+                               shift_geo = FALSE,
+                               summary_var = summary_var,
+                               key = key,
+                               show_call = show_call))
       })
     }
     return(result)
@@ -251,22 +290,22 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
     l <- split(variables, ceiling(seq_along(variables) / 48))
 
     dat <- map(l, function(x) {
-      d <- try(load_data_decennial(geography, x, key, year, sumfile, state, county),
+      d <- try(load_data_decennial(geography, x, key, year, sumfile, state, county, show_call = show_call),
                  silent = TRUE)
       # If sf1 fails, try to get it from sf3
       if (inherits(d, "try-error")) {
-        d <- try(suppressMessages(load_data_decennial(geography, x, key, year, sumfile = "sf3", state, county)))
+        d <- try(suppressMessages(load_data_decennial(geography, x, key, year, sumfile = "sf3", state, county, show_call = show_call)))
       }
       d
     }) %>%
       bind_cols()
   } else {
-    dat <- try(load_data_decennial(geography, variables, key, year, sumfile, state, county),
+    dat <- try(load_data_decennial(geography, variables, key, year, sumfile, state, county, show_call = show_call),
                silent = TRUE)
 
     # If sf1 fails, try to get it from sf3
     if (inherits(dat, "try-error")) {
-      dat <- try(suppressMessages(load_data_decennial(geography, variables, key, year, sumfile = "sf3", state, county)))
+      dat <- try(suppressMessages(load_data_decennial(geography, variables, key, year, sumfile = "sf3", state, county, show_call = show_call)))
     }
 
   }
@@ -305,11 +344,11 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
   if (!is.null(summary_var)) {
 
     sumdat <- suppressMessages(try(load_data_decennial(geography, summary_var, key, year,
-                                                   sumfile, state, county)))
+                                                   sumfile, state, county, show_call = show_call)))
 
     if (inherits(sumdat, "try-error")) {
       sumdat <- suppressMessages(try(load_data_decennial(geography, summary_var, key, year,
-                                        sumfile = "sf3", state, county)))
+                                        sumfile = "sf3", state, county, show_call = show_call)))
     }
 
     dat2 <- dat2 %>%
