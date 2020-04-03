@@ -95,6 +95,24 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     stop("Only one table may be requested per call.", call. = FALSE)
   }
 
+  if (!is.null(variables)) {
+    if (any(grepl("^K[0-9].", variables))) {
+      message("Getting data from the ACS 1-year Supplemental Estimates.  Data are available for geographies with populations of 20,000 and greater.")
+      survey <- "acsse"
+
+    }
+  }
+
+  if (!is.null(table)) {
+    if (grepl("^K[0-9].", table)) {
+      message("Getting data from the ACS 1-year Supplemental Estimates.  Data are available for geographies with populations of 20,000 and greater.")
+      survey <- "acsse"
+
+    }
+  }
+
+
+
   if (survey == "acs1") {
     message(sprintf("Getting data from the %s 1-year ACS", year))
   } else if (survey == "acs3") {
@@ -160,7 +178,11 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
   if (geography == "cbsa") geography <- "metropolitan statistical area/micropolitan statistical area"
 
+  if (geography == "cbg") geography <- "block group"
+
   if (geography == "zcta") geography <- "zip code tabulation area"
+
+  if (geography == "puma") geography <- "public use microdata area"
 
   if (geography == "zip code tabulation area" && (!is.null(state) || !is.null(county))) {
     stop("ZCTAs can only be requested for the entire country, not within states or counties.",
@@ -259,6 +281,11 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
   # call itself for "B" variables, "S" variabls and "DP" variables then combining the results
 
   if (length(unique(substr(variables, 1, 1))) > 1 && !all(unique(substr(variables, 1, 1)) %in% c("B", "C"))) {
+
+    if (any(grepl("^K[0-9].", variables))) {
+      stop("At the moment, supplemental estimates variables cannot be combined with variables from other datasets.", call. = FALSE)
+
+    }
 
     message('Fetching data by table type ("B/C", "S", "DP") and combining the result.')
 
@@ -611,6 +638,8 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
       survey2 <- paste0(survey, "/subject")
     } else if (grepl("^DP[0-9].", table)) {
       survey2 <- paste0(survey, "/profile")
+    } else if (grepl("^K[0-9].", table)) {
+      survey2 <- "acsse"
     } else {
       survey2 <- survey
     }

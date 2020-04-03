@@ -1,12 +1,18 @@
 ## tidycensus
 
-[![Build Status](https://travis-ci.org/walkerke/tidycensus.svg?branch=master)](https://travis-ci.org/walkerke/tidycensus) ![CRAN Badge](http://www.r-pkg.org/badges/version/tidycensus)  ![CRAN Downloads](http://cranlogs.r-pkg.org/badges/grand-total/tidycensus)
+[![Build Status](https://travis-ci.org/walkerke/tidycensus.svg?branch=master)](https://travis-ci.org/walkerke/tidycensus) ![CRAN Badge](http://www.r-pkg.org/badges/version/tidycensus)  ![CRAN Downloads](http://cranlogs.r-pkg.org/badges/tidycensus)
 
 __tidycensus__ is an R package that allows users to interface with the US Census Bureau's decennial Census and five-year American Community APIs and return tidyverse-ready data frames, optionally with simple feature geometry included.  Install from CRAN with the following command: 
 
 ```r
 install.packages("tidycensus")
 ```
+
+## In version 0.9.9.2: 
+
+* `geometry = TRUE` now works for all geographies currently available in tidycensus.  Version 1.0 (the next planned CRAN release) will aim to support every geography available from the API.  
+* `get_acs()` can now support the ACS Supplemental Estimates API. 
+
 
 ## In version 0.9.5: 
 
