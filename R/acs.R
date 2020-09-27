@@ -62,7 +62,7 @@
 #'   geom_sf() +
 #'   coord_sf(crs = 26914) +
 #'   scale_fill_viridis(option = "magma") +
-#'   scale_color_viridis(options = "magma")
+#'   scale_color_viridis(option = "magma")
 #'
 #'
 #' vt <- get_acs(geography = "county", variables = "B19013_001", state = "VT")
@@ -85,6 +85,10 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                     state = NULL, county = NULL, geometry = FALSE, keep_geo_vars = FALSE,
                     shift_geo = FALSE, summary_var = NULL, key = NULL,
                     moe_level = 90, survey = "acs5", show_call = FALSE, ...) {
+
+  if (year < 2009) {
+    stop("ACS support in tidycensus begins with the 2005-2009 5-year ACS. Consider using decennial Census data instead.", call. = FALSE)
+  }
 
   if (!is.null(endyear)) {
     year <- endyear
@@ -681,10 +685,8 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
     # dat[[moe_vars]] <- apply(dat[[moe_vars]], 2, function(x) round(x * moe_factor, 0))
 
-    moex <- function(x) x * moe_factor
-
     dat2 <- dat %>%
-      mutate_if(grepl("*M$", names(.)), funs(moex))
+      mutate_if(grepl("*M$", names(.)), list(~(. * moe_factor)))
 
     if (!is.null(names(variables))) {
       for (i in 1:length(variables)) {
@@ -698,6 +700,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
   }
 
   if (!is.null(summary_var)) {
+
+    if (length(summary_var) > 1) {
+      stop(paste0("Only one summary variable may be used per pull. ",
+                  "Alternatively, place all variables in `variables` and ",
+                  "use `output='wide'`"))
+    }
 
     sumvar <- format_variables_acs(summary_var)
 

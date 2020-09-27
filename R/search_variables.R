@@ -30,14 +30,14 @@ load_variables <- function(year, dataset, cache = FALSE) {
     rds <- gsub("/", "_", rds)
   }
 
-  if (year > 2009 && (grepl("acs1", dataset) || grepl("acs5", dataset)) || grepl("acsse", dataset)) {
+  if (year > 2008 && (grepl("acs1", dataset) || grepl("acs5", dataset)) || grepl("acsse", dataset)) {
     dataset <- paste0("acs/", dataset)
   }
 
   get_dataset <- function(d) {
 
     # Account for URL change for 2010 decennial Census
-    if (year == 2010 && dataset == "sf1") {
+    if (year %in% c(2000, 2010) && dataset == "sf1") {
       d <- paste0("dec/", d)
     }
 
