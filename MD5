@@ -1,4 +1,4 @@
-417939f980591adaad7cfadcf6645e93 *DESCRIPTION
+d93fc04cfe7f09b8d3db550650f7b5e5 *DESCRIPTION
 1c9f9ed716ec4a5bcd6fc7c413d14179 *LICENSE
 2ca08e028b091cf543fca2120e550914 *NAMESPACE
 23cc48a7045fc94c995d26540aa4208a *R/acs.R
@@ -7,16 +7,16 @@
 4508bc50e738509849e2c1afa181330f *R/estimates.R
 cf17e3389a8ed6694c4831bde257aaf3 *R/fips_codes.R
 523b7946e677e04542ae7a55cf152cbb *R/helpers.R
-043a5415f5909b626d4411970d8f14af *R/load_data.R
+a879dd414007a13acced45bca57ec53f *R/load_data.R
 f1c3434b1251571ecc5ad7a5988bbb5c *R/moe.R
 5d7279e6138fb2fb4a0c0bb2015ef856 *R/pums.R
-d7cd7e7a59b66016914e46d93fce7841 *R/search_variables.R
+2100df76a741447eed37565b516ff0d0 *R/search_variables.R
 f9095e7e1663e162d94a32bb54d40526 *R/significance.R
 99e707e9414bcb8a57c23ba60e6c3b98 *R/tidycensus-package.R
 9470877284fb3a9a6b0ed140d9889cda *R/utils.R
 c6398c9bd83ab42b91fd9ddef8ae3200 *R/validate_call.R
 960f9d678af7ae3c800b0e7c4e3d1118 *R/zzz.r
-87b4f86e7ac01ff758637b213e46f7bf *README.md
+f350aadb6866659a56ebb4f37d009b1f *README.md
 7c18f03d2eeaf8b59dbb89fab3d5ef80 *data/county_laea.rda
 9b3a1eb434f0fa7d5957b9307281f0d4 *data/fips_codes.rda
 0561cfcf79b32ef378cacbf4760bfd3b *data/pums_variables.rda
