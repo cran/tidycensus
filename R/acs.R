@@ -1,51 +1,55 @@
-#' Obtain data and feature geometry for the five-year American Community Survey
+#' Obtain data and feature geometry for the American Community Survey
 #'
 #' @param geography The geography of your data.
 #' @param variables Character string or vector of character strings of variable
-#'                  IDs. tidycensus automatically returns the estimate and the
-#'                  margin of error associated with the variable.
-#' @param table   The ACS table for which you would like to request all variables. Uses
-#'                lookup tables to identify the variables; performs faster when variable
-#'                table already exists through \code{load_variables(cache = TRUE)}.
-#'                Only one table may be requested per call.
-#' @param cache_table Whether or not to cache table names for faster future access.
-#'                    Defaults to FALSE; if TRUE, only needs to be called once per
-#'                    dataset.  If variables dataset is already cached via the
-#'                    \code{load_variables} function, this can be bypassed.
-#' @param year The year, or endyear, of the ACS sample. 2009 through 2018 are
-#'                available. Defaults to 2018.
+#'   IDs. tidycensus automatically returns the estimate and the margin of error
+#'   associated with the variable.
+#' @param table   The ACS table for which you would like to request all
+#'   variables. Uses lookup tables to identify the variables; performs faster
+#'   when variable table already exists through \code{load_variables(cache =
+#'   TRUE)}. Only one table may be requested per call.
+#' @param cache_table Whether or not to cache table names for faster future
+#'   access. Defaults to FALSE; if TRUE, only needs to be called once per
+#'   dataset.  If variables dataset is already cached via the
+#'   \code{load_variables} function, this can be bypassed.
+#' @param year The year, or endyear, of the ACS sample. 5-year ACS data is
+#'   available from 2009 through 2018. 1-year ACS data is available from 2005
+#'   through 2019. Defaults to 2018.
 #' @param endyear Deprecated and will be removed in a future release.
 #' @param output One of "tidy" (the default) in which each row represents an
-#'               enumeration unit-variable combination, or "wide" in which each
-#'               row represents an enumeration unit and the variables are in the
-#'               columns.
-#' @param state An optional vector of states for which you are requesting data. State
-#'              names, postal codes, and FIPS codes are accepted.
-#'              Defaults to NULL.
+#'   enumeration unit-variable combination, or "wide" in which each row
+#'   represents an enumeration unit and the variables are in the columns.
+#' @param state An optional vector of states for which you are requesting data.
+#'   State names, postal codes, and FIPS codes are accepted. Defaults to NULL.
 #' @param county The county for which you are requesting data. County names and
-#'               FIPS codes are accepted. Must be combined with a value supplied
-#'               to `state`.  Defaults to NULL.
+#'   FIPS codes are accepted. Must be combined with a value supplied to `state`.
+#'   Defaults to NULL.
+#' @param zcta The zip code tabulation area(s) for which you are requesting
+#'   data. Specify a single value or a vector of values to get data for more
+#'   than one ZCTA. Numeric or character ZCTA GEOIDs are accepted. When
+#'   specifying ZCTAs, geography must be set to `"zcta"` and `state` and
+#'   `county` must be `NULL`. Defaults to NULL.
 #' @param geometry if FALSE (the default), return a regular tibble of ACS data.
-#'                 if TRUE, uses the tigris package to return an sf tibble
-#'                 with simple feature geometry in the `geometry` column.  state, county, tract, block group,
-#'                 block, and ZCTA geometry are supported.
+#'   if TRUE, uses the tigris package to return an sf tibble with simple feature
+#'   geometry in the `geometry` column.
 #' @param keep_geo_vars if TRUE, keeps all the variables from the Census
-#'                      shapefile obtained by tigris.  Defaults to FALSE.
-#' @param shift_geo if TRUE, returns geometry with Alaska and Hawaii shifted for thematic mapping of the entire US.
-#'                  Geometry was originally obtained from the albersusa R package.
-#' @param summary_var Character string of a "summary variable" from the ACS
-#'                    to be included
-#'                    in your output. Usually a variable (e.g. total population)
-#'                    that you'll want to use as a denominator or comparison.
-#' @param key Your Census API key.
-#'            Obtain one at \url{http://api.census.gov/data/key_signup.html}
-#' @param moe_level The confidence level of the returned margin of error.  One of 90 (the default), 95, or 99.
-#' @param survey The ACS contains one-year, three-year, and five-year surveys expressed as "acs1", "acs3", and "acs5".
-#'               The default selection is "acs5."
-#' @param show_call if TRUE, display call made to Census API. This can be very useful
-#'                  in debugging and determining if error messages returned are
-#'                  due to tidycensus or the Census API. Copy to the API call into
-#'                  a browser and see what is returned by the API directly. Defaults to FALSE.
+#'   shapefile obtained by tigris.  Defaults to FALSE.
+#' @param shift_geo if TRUE, returns geometry with Alaska and Hawaii shifted for
+#'   thematic mapping of the entire US. Geometry was originally obtained from
+#'   the albersusa R package.
+#' @param summary_var Character string of a "summary variable" from the ACS to
+#'   be included in your output. Usually a variable (e.g. total population) that
+#'   you'll want to use as a denominator or comparison.
+#' @param key Your Census API key. Obtain one at
+#'   \url{http://api.census.gov/data/key_signup.html}
+#' @param moe_level The confidence level of the returned margin of error.  One
+#'   of 90 (the default), 95, or 99.
+#' @param survey The ACS contains one-year, three-year, and five-year surveys
+#'   expressed as "acs1", "acs3", and "acs5". The default selection is "acs5."
+#' @param show_call if TRUE, display call made to Census API. This can be very
+#'   useful in debugging and determining if error messages returned are due to
+#'   tidycensus or the Census API. Copy to the API call into a browser and see
+#'   what is returned by the API directly. Defaults to FALSE.
 #' @param ... Other keyword arguments
 #'
 #' @return A tibble or sf tibble of ACS data
@@ -80,14 +84,29 @@
 #' }
 #' @export
 get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FALSE,
-                    year = 2018, endyear = NULL,
-                    output = "tidy",
-                    state = NULL, county = NULL, geometry = FALSE, keep_geo_vars = FALSE,
+                    year = 2019, endyear = NULL, output = "tidy",
+                    state = NULL, county = NULL, zcta = NULL,
+                    geometry = FALSE, keep_geo_vars = FALSE,
                     shift_geo = FALSE, summary_var = NULL, key = NULL,
                     moe_level = 90, survey = "acs5", show_call = FALSE, ...) {
 
-  if (year < 2009) {
-    stop("ACS support in tidycensus begins with the 2005-2009 5-year ACS. Consider using decennial Census data instead.", call. = FALSE)
+  if (survey == "acs5" && year < 2009) {
+    stop("5-year ACS support in tidycensus begins with the 2005-2009 5-year ACS. Consider using decennial Census data instead.", call. = FALSE)
+  }
+
+  if (survey == "acs1") {
+    if (year < 2005) {
+      stop("1-year ACS support in tidycensus begins with the 2005 1-year ACS. Consider using decennial Census data instead.", call. = FALSE)
+    }
+    message("The 1-year ACS provides data for geographies with populations of 65,000 and greater.")
+  }
+
+  if (survey == "acs3") {
+    if (year < 2007 || year > 2013) {
+      stop("3-year ACS support in tidycensus begins with the 2005-2007 3-year ACS and ends with the 2011-2013 3-year ACS. For newer data, use the 1-year or 5-year ACS.", call. = FALSE)
+    } else {
+      message("The 3-year ACS provides data for geographies with populations of 20,000 and greater.")
+    }
   }
 
   if (!is.null(endyear)) {
@@ -115,8 +134,6 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     }
   }
 
-
-
   if (survey == "acs1") {
     message(sprintf("Getting data from the %s 1-year ACS", year))
   } else if (survey == "acs3") {
@@ -137,21 +154,8 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
   }
 
-
   if (geography == "block") {
     stop("Block data are not available in the ACS. Use `get_decennial()` to access block data from the 2010 Census.", call. = FALSE)
-  }
-
-  if (survey == "acs3") {
-    if (year > 2013) {
-      stop("The three-year ACS ended in 2013. For newer data, use the 1-year or 5-year ACS.", call. = FALSE)
-    } else {
-      message("The three-year ACS provides data for geographies with populations of 20,000 and greater.")
-    }
-  }
-
-  if (survey == "acs1") {
-    message("The one-year ACS provides data for geographies with populations of 65,000 and greater.")
   }
 
   cache <- getOption("tigris_use_cache", FALSE)
@@ -189,7 +193,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
   if (geography == "puma") geography <- "public use microdata area"
 
   if (geography == "zip code tabulation area" && (!is.null(state) || !is.null(county))) {
-    stop("ZCTAs can only be requested for the entire country, not within states or counties.",
+    stop("ZCTAs can only be requested for the entire country or by specifying ZCTAs, not within states or counties.",
+         call. = FALSE)
+  }
+
+  if (!is.null(zcta) && geography != "zip code tabulation area") {
+    stop("ZCTAs can only be specified when requesting data at the zip code tabulation area-level.",
          call. = FALSE)
   }
 
@@ -237,6 +246,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                          output = output,
                          state = .x,
                          county = county,
+                         zcta = zcta,
                          summary_var = summary_var,
                          geometry = geometry,
                          keep_geo_vars = keep_geo_vars,
@@ -265,6 +275,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                          output = output,
                          state = .x,
                          county = county,
+                         zcta = zcta,
                          summary_var = summary_var,
                          geometry = geometry,
                          keep_geo_vars = keep_geo_vars,
@@ -294,7 +305,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     message('Fetching data by table type ("B/C", "S", "DP") and combining the result.')
 
     # split variables by type into list, discard empty list elements
-    vars_by_type <- map(c("^B|^C", "^S", "^D"), ~ str_subset(variables, .x)) %>%
+    vars_by_type <- map(c("^B|^C", "^S", "^D"), ~ variables[str_detect(variables, .x)]) %>%
       purrr::compact()
 
     if (geometry) {
@@ -321,6 +332,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
             output = output,
             state = state,
             county = county,
+            zcta = zcta,
             summary_var = summary_var,
             geometry = geometry,
             keep_geo_vars = keep_geo_vars,
@@ -344,6 +356,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
               output = output,
               state = state,
               county = county,
+              zcta = zcta,
               summary_var = summary_var,
               geometry = FALSE,
               keep_geo_vars = keep_geo_vars,
@@ -377,6 +390,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
             output = output,
             state = state,
             county = county,
+            zcta = zcta,
             summary_var = summary_var,
             geometry = geometry,
             keep_geo_vars = keep_geo_vars,
@@ -414,6 +428,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
               output = output,
               state = state,
               county = county,
+              zcta = zcta,
               summary_var = summary_var,
               geometry = geometry,
               keep_geo_vars = keep_geo_vars,
@@ -438,6 +453,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
               output = output,
               state = state,
               county = county,
+              zcta = zcta,
               summary_var = summary_var,
               geometry = geometry,
               keep_geo_vars = keep_geo_vars,
@@ -473,6 +489,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                 output = output,
                 state = .x,
                 county = county,
+                zcta = zcta,
                 summary_var = summary_var,
                 geometry = geometry,
                 keep_geo_vars = keep_geo_vars,
@@ -502,6 +519,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                 output = output,
                 state = .x,
                 county = county,
+                zcta = zcta,
                 summary_var = summary_var,
                 geometry = geometry,
                 keep_geo_vars = keep_geo_vars,
@@ -528,6 +546,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                 output = output,
                 state = state,
                 county = .x,
+                zcta = zcta,
                 summary_var = summary_var,
                 geometry = geometry,
                 keep_geo_vars = keep_geo_vars,
@@ -558,6 +577,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                 output = output,
                 state = state,
                 county = .x,
+                zcta = zcta,
                 summary_var = summary_var,
                 geometry = geometry,
                 keep_geo_vars = keep_geo_vars,
@@ -603,14 +623,14 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     dat <- map(l, function(x) {
       vars <- format_variables_acs(x)
       suppressWarnings(load_data_acs(geography, vars, key, year, state, county,
-                                     survey, show_call = show_call))
+                                     zcta, survey, show_call = show_call))
     }) %>%
     Reduce(function(x, y) full_join(x, y, by = "GEOID", suffix = c("", ".y")), .)
   } else {
     vars <- format_variables_acs(variables)
 
     dat <- suppressWarnings(load_data_acs(geography, vars, key, year, state, county,
-                                          survey, show_call = show_call))
+                                          zcta, survey, show_call = show_call))
   }
 
   vars2 <- format_variables_acs(variables)
@@ -709,7 +729,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
     sumvar <- format_variables_acs(summary_var)
 
-    sumdat <- suppressMessages(load_data_acs(geography, sumvar, key, year, state, county, survey))
+    sumdat <- suppressMessages(load_data_acs(geography, sumvar, key, year, state, county, zcta, survey))
 
     sumest <- paste0(summary_var, "E")
 
