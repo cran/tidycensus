@@ -7,7 +7,7 @@
 #'   to request data. To get data from PUMAs in more than one state, specify a
 #'   named vector of state/PUMA pairs and set \code{state = "multiple"}.
 #' @param year The data year of the 1-year ACS sample or the endyear of the
-#'   5-year sample. Defaults to 2018.
+#'   5-year sample. Defaults to 2019.
 #' @param survey The ACS survey; one of either \code{"acs1"} or \code{"acs5"}
 #'   (the default).
 #' @param rep_weights Whether or not to return housing unit, person, or both
@@ -37,7 +37,7 @@
 get_pums <- function(variables,
                      state = NULL,
                      puma = NULL,
-                     year = 2018,
+                     year = 2019,
                      survey = "acs5",
                      rep_weights = NULL,
                      recode = FALSE,
@@ -197,7 +197,7 @@ to_survey <- function(df,
 
   if (design == "cluster") {
     if (!all(c("SERIALNO", "PUMA") %in% names(df))) {
-      stop('"SERIALNO" and "PUMA" are present in input data.', call. = FALSE)
+      stop('"SERIALNO" and "PUMA" must both be present in the input data.', call. = FALSE)
     }
   }
 

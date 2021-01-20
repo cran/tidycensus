@@ -13,8 +13,8 @@
 #'   dataset.  If variables dataset is already cached via the
 #'   \code{load_variables} function, this can be bypassed.
 #' @param year The year, or endyear, of the ACS sample. 5-year ACS data is
-#'   available from 2009 through 2018. 1-year ACS data is available from 2005
-#'   through 2019. Defaults to 2018.
+#'   available from 2009 through 2019. 1-year ACS data is available from 2005
+#'   through 2019. Defaults to 2019.
 #' @param endyear Deprecated and will be removed in a future release.
 #' @param output One of "tidy" (the default) in which each row represents an
 #'   enumeration unit-variable combination, or "wide" in which each row
@@ -77,7 +77,7 @@
 #'   geom_errorbarh(aes(xmin = estimate - moe, xmax = estimate + moe)) +
 #'   geom_point(color = "red", size = 3) +
 #'   labs(title = "Household income by county in Vermont",
-#'        subtitle = "2012-2016 American Community Survey",
+#'        subtitle = "2015-2019 American Community Survey",
 #'        y = "",
 #'        x = "ACS estimate (bars represent margin of error)")
 #'
@@ -193,9 +193,18 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
   if (geography == "puma") geography <- "public use microdata area"
 
   if (geography == "zip code tabulation area" && (!is.null(state) || !is.null(county))) {
-    stop("ZCTAs can only be requested for the entire country or by specifying ZCTAs, not within states or counties.",
-         call. = FALSE)
+
+    if (year < 2019) {
+      stop("For ACS years prior to 2019, ZCTAs can only be requested for the entire country or by specifying ZCTAs, not within states or counties.",
+           call. = FALSE)
+    } else {
+      if (!is.null(county)) {
+        stop("ZCTAs for ACS years 2019 and later are available by state, but not by county.",
+             call. = FALSE)
+      }
+    }
   }
+
 
   if (!is.null(zcta) && geography != "zip code tabulation area") {
     stop("ZCTAs can only be specified when requesting data at the zip code tabulation area-level.",
@@ -753,6 +762,14 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     dat2[dat2 == -777777777] <- NA
     dat2[dat2 == -888888888] <- NA
     dat2[dat2 == -999999999] <- NA
+  }
+
+  # For ZCTAs 2019 and later, strip the state code from GEOID (issue #338)
+  if (geography == "zip code tabulation area" && year > 2018) {
+    dat2 <- dat2 %>%
+      dplyr::mutate(
+        GEOID = stringr::str_sub(GEOID, start = 3L)
+      )
   }
 
   if (geometry) {
