@@ -5,11 +5,12 @@
 \title{Load data from the American Community Survey Public Use Microdata Series API}
 \usage{
 get_pums(
-  variables,
+  variables = NULL,
   state = NULL,
   puma = NULL,
   year = 2019,
   survey = "acs5",
+  variables_filter = NULL,
   rep_weights = NULL,
   recode = FALSE,
   show_call = FALSE,
@@ -17,7 +18,8 @@ get_pums(
 )
 }
 \arguments{
-\item{variables}{A vector of variables from the PUMS API.}
+\item{variables}{A vector of variables from the PUMS API.
+Use \code{View(pums_variables)} to browse variable options.}
 
 \item{state}{A state, or vector of states, for which you would like to
 request data.  The entire US can be requested with \code{state = "all"} - though be patient with the data download!}
@@ -31,6 +33,13 @@ named vector of state/PUMA pairs and set \code{state = "multiple"}.}
 
 \item{survey}{The ACS survey; one of either \code{"acs1"} or \code{"acs5"}
 (the default).}
+
+\item{variables_filter}{A named list of filters you'd like to return from the
+PUMS API.  For example, passing \code{list(AGE = 25:50, SEX = 1)} will return
+only males aged 25 to 50 in your output dataset.  Defaults to \code{NULL},
+which returns all records. If a housing-only dataset is required,
+use \code{list(SPORDER = 1)} to only return householder records (taking care
+in your analysis to use the household weight \code{WGTP}).}
 
 \item{rep_weights}{Whether or not to return housing unit, person, or both
 housing and person-level replicate weights for calculation of standard
@@ -46,7 +55,7 @@ tidycensus or the Census API. Copy to the API call into a browser and see
 what is returned by the API directly. Defaults to FALSE.}
 
 \item{key}{Your Census API key. Obtain one at
-\url{http://api.census.gov/data/key_signup.html}}
+\url{https://api.census.gov/data/key_signup.html}}
 }
 \value{
 A tibble of microdata from the ACS PUMS API.

@@ -29,8 +29,8 @@ get_estimates(
 \item{product}{The data product (optional). \code{"population"}, \code{"components"}
 \code{"housing"}, and \code{"characteristics"} are supported.}
 
-\item{variables}{A character string of requested variables to get specific
-variables from the population, components, and housing APIs.}
+\item{variables}{A character string or vector of character strings of requested variables
+to get from either the population, components, or housing API.}
 
 \item{breakdown}{The population breakdown used when \code{product = "characteristics"}.
 Acceptable values are \code{"AGEGROUP"}, \code{"RACE"}, \code{"SEX"}, and
@@ -41,7 +41,7 @@ combinations of these breakdowns.}
 \item{breakdown_labels}{Whether or not to label breakdown elements returned when
 \code{product = "characteristics"}. Defaults to FALSE.}
 
-\item{year}{The data year (defaults to 2018)}
+\item{year}{The data year (defaults to 2019)}
 
 \item{state}{The state for which you are requesting data. State
 names, postal codes, and FIPS codes are accepted.
@@ -55,7 +55,7 @@ to `state`.  Defaults to NULL.}
 of 2010. The returned column is either "DATE", representing a particular estimate date, or "PERIOD",
 representing a time period (e.g. births between 2016 and 2017), and contains integers representing
 those values.  Integer to date or period mapping is available at
-\url{https://www.census.gov/data/developers/data-sets/popest-popproj/popest/popest-vars/2018.html}.}
+\url{https://www.census.gov/data/developers/data-sets/popest-popproj/popest/popest-vars/2019.html}.}
 
 \item{output}{One of "tidy" (the default) in which each row represents an
 enumeration unit-variable combination, or "wide" in which each
@@ -69,11 +69,12 @@ with simple feature geometry in the `geometry` column.}
 \item{keep_geo_vars}{if TRUE, keeps all the variables from the Census
 shapefile obtained by tigris.  Defaults to FALSE.}
 
-\item{shift_geo}{if TRUE, returns geometry with Alaska and Hawaii shifted for thematic
-mapping of the entire US.}
+\item{shift_geo}{(deprecated) if TRUE, returns geometry with Alaska and Hawaii shifted for thematic
+mapping of the entire US.  As of May 2021, we recommend using \code{tigris::shift_geometry()}
+instead.}
 
 \item{key}{Your Census API key.
-Obtain one at \url{http://api.census.gov/data/key_signup.html}.  Can be stored
+Obtain one at \url{https://api.census.gov/data/key_signup.html}.  Can be stored
 in your .Renviron with \code{census_api_key("YOUR KEY", install = TRUE)}}
 
 \item{show_call}{if TRUE, display call made to Census API. This can be very useful
