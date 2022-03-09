@@ -75,7 +75,7 @@
 #' vt %>%
 #' mutate(NAME = gsub(" County, Vermont", "", NAME)) %>%
 #'  ggplot(aes(x = estimate, y = reorder(NAME, estimate))) +
-#'   geom_errorbarh(aes(xmin = estimate - moe, xmax = estimate + moe)) +
+#'   geom_errorbar(aes(xmin = estimate - moe, xmax = estimate + moe), width = 0.3, size = 0.5) +
 #'   geom_point(color = "red", size = 3) +
 #'   labs(title = "Household income by county in Vermont",
 #'        subtitle = "2015-2019 American Community Survey",
@@ -155,7 +155,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
   } else if (is.null(key)) {
 
-    stop('A Census API key is required.  Obtain one at http://api.census.gov/data/key_signup.html, and then supply the key to the `census_api_key` function to use it throughout your tidycensus session.')
+    stop('A Census API key is required.  Obtain one at http://api.census.gov/data/key_signup.html, and then supply the key to the `census_api_key()` function to use it throughout your tidycensus session.')
 
   }
 

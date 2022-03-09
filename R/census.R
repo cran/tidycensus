@@ -1,4 +1,4 @@
-#' Obtain data and feature geometry for the decennial Census
+#' Obtain data and feature geometry for the decennial US Census
 #'
 #' @param geography The geography of your data.
 #' @param variables Character string or vector of character strings of variable
@@ -11,7 +11,8 @@
 #'                    Defaults to FALSE; if TRUE, only needs to be called once per
 #'                    dataset.  If variables dataset is already cached via the
 #'                    \code{load_variables} function, this can be bypassed.
-#' @param year The year for which you are requesting data.   are available.
+#' @param year The year for which you are requesting data. Defaults to 2010; 2000,
+#'             2010, and 2020 are available.
 #' @param sumfile The Census summary file.  Defaults to sf1; the function will look in sf3 if it
 #'                cannot find a variable in sf1.
 #' @param state The state for which you are requesting data. State
@@ -97,7 +98,7 @@ get_decennial <- function(geography, variables = NULL, table = NULL, cache_table
 
   } else if (is.null(key)) {
 
-    stop('A Census API key is required.  Obtain one at http://api.census.gov/data/key_signup.html, and then supply the key to the `census_api_key` function to use it throughout your tidycensus session.')
+    stop('A Census API key is required.  Obtain one at http://api.census.gov/data/key_signup.html, and then supply the key to the `census_api_key()` function to use it throughout your tidycensus session.')
 
   }
 
