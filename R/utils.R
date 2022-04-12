@@ -149,3 +149,323 @@ print_api_call <- function(url) {
   url <- gsub("&key.*", "", url)
   message(paste("Census API call:", utils::URLdecode(url)))
 }
+
+
+#' Convert polygon geometry to dots for dot-density mapping
+#'
+#' Dot-density maps are a compelling alternative to choropleth maps for cartographic visualization of demographic data as they allow for representation of the internal heterogeneity of geographic units.  This function helps users generate dots from an input polygon dataset intended for dot-density mapping.  Dots are placed randomly within polygons according to a given data:dots ratio; for example, a ratio of 100:1 for an input population value column will place approximately 1 dot in the polygon for every 100 people in the geographic unit.  Users can then map the dots using tools like \code{ggplot2::geom_sf()} or \code{tmap::tm_dots()}.
+#'
+#' \code{as_dot_density()} uses \code{terra::dots()} internally for fast creation of dots. As terra is not a hard dependency of the tidycensus package, users must first install terra before using this function.
+#'
+#' The \code{erase_water} parameter will internally call \code{tigris::erase_water()} to fetch water area for a given location in the United States and remove that water area from the polygons before placing dots in polygons. This will slow down performance of the function, but can improve cartographic accuracy in locations with significant water area. It is recommended that users transform their data into a projected coordinate reference system with \code{sf::st_transform()} prior to using this option in order to improve performance.
+#'
+#'
+#' @param input_data An input sf object of geometry type \code{POLYGON} or \code{MULTIPOLYGON} that includes some information that can be converted to dots.  While the function is designed for use with data acquired with the tidycensus package, it will work for arbitrary polygon datasets.
+#' @param value The value column to be used to determine the number of dots to generate. For tidycensus users, this will typically be the \code{"value"} column for decennial Census data or the \code{"estimate"} column for American Community Survey estimates.
+#' @param values_per_dot The number of values per dot; used to determine the output data:dots ratio. A value of 100 means that each dot will represent approximately 100 values in the value column.
+#' @param group A column in the dataset that identifies salient groups within which dots should be generated.  For a long-form tidycensus dataset, this will typically be the \code{"variable"} column or some derivative of it. The output dataset will be randomly shuffled to prevent "stacking" of groups in downstream dot-density maps.
+#' @param erase_water If \code{TRUE}, calls \code{tigris::erase_water()} to remove water areas from the polygons prior to generating dots, allowing for dasymetric dot placement. This option is recommended if your location includes significant water area. If using this option, it is recommended that you first transform your data to a projected coordinate reference system using \code{sf::st_transform()} to improve performance. This argument only works for data in the United States.
+#' @param area_threshold The area percentile threshold to be used when erasing water; ranges from 0 (all water area included) to 1 (no water area included)
+#'
+#' @return The original dataset but of geometry type \code{POINT}, with the number of point features corresponding to the given value:dot ratio for a given group.
+#' @export
+#'
+#' @examples \dontrun{
+#'
+#' library(tidycensus)
+#' library(ggplot2)
+#'
+#' # Identify variables for mapping
+#' race_vars <- c(
+#'   Hispanic = "P2_002N",
+#'   White = "P2_005N",
+#'   Black = "P2_006N",
+#'   Asian = "P2_008N"
+#' )
+#'
+#' # Get data from tidycensus
+#' baltimore_race <- get_decennial(
+#'   geography = "tract",
+#'   variables = race_vars,
+#'   state = "MD",
+#'   county = "Baltimore city",
+#'   geometry = TRUE,
+#'   year = 2020
+#' )
+#'
+#' # Convert data to dots
+#' baltimore_dots <- as_dot_density(
+#'   baltimore_race,
+#'   value = "value",
+#'   values_per_dot = 100,
+#'   group = "variable"
+#' )
+#'
+#' # Use one set of polygon geometries as a base layer
+#' baltimore_base <- baltimore_race[baltimore_race$variable == "Hispanic", ]
+#'
+#' # Map with ggplot2
+#' ggplot() +
+#'   geom_sf(data = baltimore_base,
+#'           fill = "white",
+#'           color = "grey") +
+#'   geom_sf(data = baltimore_dots,
+#'           aes(color = variable),
+#'           size = 0.01) +
+#'   theme_void()
+#'
+#' }
+as_dot_density <- function(
+    input_data,
+    value,
+    values_per_dot,
+    group = NULL,
+    erase_water = FALSE,
+    area_threshold = NULL
+) {
+
+  # Ensure that terra package is installed
+  if (!"terra" %in% installed.packages()) {
+    stop("`as_dot_density()` uses the terra package to generate dots. Please install terra first then re-run.", call. = FALSE)
+  }
+
+  # If erase water is selected, erase water area from the polygons first
+  if (erase_water) {
+
+    if (is.null(area_threshold)) {
+      area_threshold = 0.75
+    }
+
+    input_data <- tigris::erase_water(input_data,
+                                      area_threshold = area_threshold)
+  } else {
+    if (!is.null(area_threshold)) {
+      message("`area_threshold` is to be used when erasing water from input polygons; ignoring as `erase_water` is currently `FALSE`.")
+    }
+  }
+
+  # If group is identified, iterate over the groups, shuffle, and combine
+  if (!is.null(group)) {
+
+    groups <- unique(input_data[[group]])
+
+    output_dots <- purrr::map_dfr(groups, function(g) {
+
+      group_data <- input_data[input_data[[group]] == g, ]
+
+      group_data %>%
+        terra::vect() %>%
+        terra::dots(field = value,
+                    size = values_per_dot) %>%
+        sf::st_as_sf()
+    }) %>%
+      dplyr::slice_sample(prop = 1)
+
+  } else {
+    output_dots <- input_data %>%
+      terra::vect() %>%
+      terra::dots(field = value,
+                  size = values_per_dot) %>%
+      sf::st_as_sf()
+  }
+
+  # Sometimes, a strange dot gets thrown in.  Ensure this doesn't get returned.
+  output_dots <- sf::st_filter(output_dots, input_data)
+
+  return(output_dots)
+
+
+}
+
+
+#' Use population-weighted interpolation to transfer information from one set of shapes to another
+#'
+#' A common use-case when working with time-series small-area Census data is to transfer data from one set of shapes (e.g. 2010 Census tracts) to another set of shapes (e.g. 2020 Census tracts). Population-weighted interpolation is one such solution to this problem that takes into account the distribution of the population within a Census unit to intelligently transfer data between incongruent units.
+#'
+#' The approach implemented here is based on Esri's data apportionment algorithm, in which an "apportionment layer" of points (referred to here as the \code{weights}) is used to determine how to weight areas of overlap between origin and target zones.  Users must supply a "from" dataset as an sf object (the dataset from which numeric columns will be interpolated) and a "to" dataset, also of class sf, that contains the target zones. A third sf object, the "weights", may be an object of geometry type \code{POINT} or polygons from which their centroids will be calculated.
+#'
+#' An intersection is computed between \code{from} and \code{to}, and a spatial join is computed between the intersection layer and the weights layer, represented as points.  A specified \code{weight_column} in \code{weights} will be used to determine the relative influence of each point on the allocation of values between \code{from} and \code{to}; if no weight column is specified, all points will be weighted equally.
+#'
+#' The \code{extensive} parameter (logical) should reflect the values being interpolated correctly.  If \code{TRUE}, the function returns a weighted sum for each zone.  If \code{FALSE}, a weighted mean will be returned.  For Census data, \code{extensive = TRUE} should be used for transferring counts / estimated counts between zones.  Derived metrics (e.g. population density, percentages, etc.) should use \code{extensive = FALSE}.  Margins of error in the ACS will not be transferred correctly with this function, so please use with caution.
+#'
+#' @param from The spatial dataset from which numeric attributes will be interpolated to target zones. By default, all numeric columns in this dataset will be interpolated.
+#' @param to The target geometries (zones) to which numeric attributes will be interpolated.
+#' @param to_id (optional) An ID column in the target dataset to be retained in the output. For data obtained with tidycensus, this will be \code{"GEOID"} by convention.  If \code{NULL}, the output dataset will include a column \code{id} that uniquely identifies each row.
+#' @param extensive if \code{TRUE}, return weighted sums; if \code{FALSE}, return weighted means.
+#' @param weights An input spatial dataset to be used as weights. If the dataset is not of geometry type \code{POINT}, its centroids will be used.  For US-based applications, this will commonly be a Census block dataset obtained with the tigris or tidycensus packages.
+#' @param weight_column (optional) a column in \code{weights} used for weighting in the interpolation process.  Typically this will be a column representing the population (or other weighting metric, like housing units) of the input weights dataset.  If \code{NULL} (the default), each feature in \code{weights} is given an equal weight of 1.
+#' @param crs (optional) The EPSG code of the output projected coordinate reference system (CRS). Useful as all input layers (\code{from}, \code{to}, and \code{weights}) must share the same CRS for the function to run correctly.
+#'
+#' @return A dataset of class sf with the geometries and an ID column from \code{to} (the target shapes) but with numeric attributes of \code{from} interpolated to those shapes.
+#' @export
+#'
+#' @examples \dontrun{
+#' # Example: interpolating work-from-home from 2011-2015 ACS
+#' # to 2020 shapes
+#' library(tidycensus)
+#' library(tidyverse)
+#' library(tigris)
+#' options(tigris_use_cache = TRUE)
+#'
+#' wfh_15 <- get_acs(
+#'   geography = "tract",
+#'   variables = "B08006_017",
+#'   year = 2015,
+#'   state = "AZ",
+#'   county = "Maricopa",
+#'   geometry = TRUE
+#' ) %>%
+#' select(estimate)
+#'
+#' wfh_20 <- get_acs(
+#'   geography = "tract",
+#'   variables = "B08006_017",
+#'   year = 2020,
+#'   state = "AZ",
+#'   county = "Maricopa",
+#'   geometry = TRUE
+#'  )
+#'
+#' maricopa_blocks <- blocks(
+#'   "AZ",
+#'   "Maricopa",
+#'   year = 2020
+#' )
+#'
+#' wfh_15_to_20 <- interpolate_pw(
+#'   from = wfh_15,
+#'   to = wfh_20,
+#'   to_id = "GEOID",
+#'   weights = maricopa_blocks,
+#'   weight_column = "POP20",
+#'   crs = 26949,
+#'   extensive = TRUE
+#' )
+#'
+#' }
+interpolate_pw <- function(from,
+                           to,
+                           to_id = NULL,
+                           extensive,
+                           weights,
+                           weight_column = NULL,
+                           crs = NULL) {
+
+  # Check to make sure all inputs are valid
+  if (!inherits(from, "sf") || !inherits(to, "sf") || !inherits(weights, "sf")) {
+    stop("All inputs (from, to, and weights) must be sf objects.", call. = FALSE)
+  }
+
+  if (!unique(sf::st_geometry_type(from)) %in% c("POLYGON", "MULTIPOLYGON")) {
+    stop("Input datasets `from` and `to` must both be of geometry type POLYGON or MULTIPOLYGON.",
+         call. = FALSE)
+  }
+
+  if (!unique(sf::st_geometry_type(to)) %in% c("POLYGON", "MULTIPOLYGON")) {
+    stop("Input datasets `from` and `to` must both be of geometry type POLYGON or MULTIPOLYGON.",
+         call. = FALSE)
+  }
+
+  # If CRS is given, transform all the objects
+  if (!is.null(crs)) {
+    from <- sf::st_transform(from, crs)
+    to <- sf::st_transform(to, crs)
+    weights <- sf::st_transform(weights, crs)
+  }
+
+  # Make a from and a to ID
+  # Keep existing structure for logical purposes from original code
+  if (is.null(to_id)) {
+    to_id <- "id"
+    to$id <- as.character(1:nrow(to))
+  }
+
+  # If the weight column is NULL, give all input shapes the same weight
+  if (is.null(weight_column)) {
+
+    weight_column <- "weight"
+
+    weights$weight <- 1
+  }
+
+  from_id <- "from_id"
+  from$from_id <- as.character(1:nrow(from))
+
+  # Convert strings to symbols for tidy evaluation
+  weight_sym <- rlang::sym(weight_column)
+  from_id_sym <- rlang::sym(from_id)
+  to_id_sym <- rlang::sym(to_id)
+
+  # Convert the input weights to centroids if input weights are not POINT
+  is_point <- unique(sf::st_is(weights, "POINT"))
+
+  # Accommodate input points if users want to bring their own
+  if (is_point) {
+    weight_centroids <- weights
+  } else {
+    weight_centroids <- suppressWarnings(weights %>%
+                                           dplyr::select(!!weight_sym) %>%
+                                           sf::st_centroid())
+  }
+
+
+
+  # Determine the denominator for the weights
+  denominators <- from %>%
+    sf::st_join(weight_centroids, left = FALSE) %>%
+    sf::st_drop_geometry() %>%
+    dplyr::group_by(!!from_id_sym) %>%
+    dplyr::summarize(total = sum(!!weight_sym, na.rm = TRUE))
+
+  # Calculate the intersections and intersection proportions
+  intersections <- suppressWarnings(
+    from %>%
+      dplyr::left_join(denominators, by = from_id) %>%
+      sf::st_intersection(to) %>%
+      dplyr::filter(sf::st_is(., c("POLYGON", "MULTIPOLYGON", "GEOMETRYCOLLECTION"))) %>%
+      dplyr::mutate(intersection_id = dplyr::row_number()) %>%
+      sf::st_join(weight_centroids, left = FALSE) %>%
+      sf::st_drop_geometry() %>%
+      dplyr::group_by(intersection_id) %>%
+      dplyr::mutate(intersection_value = sum(!!weight_sym, na.rm = TRUE)) %>%
+      dplyr::ungroup() %>%
+      dplyr::distinct(intersection_id, .keep_all = TRUE) %>%
+      dplyr::mutate(weight_coef = intersection_value / total) %>%
+      dplyr::select(!!from_id_sym, !!to_id_sym, intersection_value, weight_coef)
+    )
+
+  # Merge the weights to the from data and interpolate any numeric columns in from to to
+  if (extensive) {
+    interpolated <- from %>%
+      sf::st_drop_geometry() %>%
+      dplyr::left_join(intersections, by = from_id) %>%
+      dplyr::mutate(dplyr::across(tidyselect::vars_select_helpers$where(is.numeric),
+                                  .fns = ~(.x * weight_coef))) %>%
+      dplyr::select(-weight_coef) %>%
+      dplyr::group_by(!!to_id_sym) %>%
+      dplyr::summarize(dplyr::across(tidyselect::vars_select_helpers$where(is.numeric),
+                                     .fns = ~sum(.x, na.rm = TRUE))) %>%
+      dplyr::select(-intersection_value)
+  } else {
+    interpolated <- from %>%
+      sf::st_drop_geometry() %>%
+      dplyr::left_join(intersections, by = from_id) %>%
+      dplyr::group_by(!!to_id_sym) %>%
+      dplyr::summarize(dplyr::across(tidyselect::vars_select_helpers$where(is.numeric),
+                                     .fns = ~weighted.mean(.x,
+                                                           w = intersection_value,
+                                                           na.rm = TRUE))) %>%
+      dplyr::select(-intersection_value, -weight_coef)
+  }
+
+  # Merge back to the original "to" shapes
+  output_shapes <- to %>%
+    dplyr::select(!!to_id_sym) %>%
+    dplyr::left_join(interpolated, by = to_id)  # %>%
+    # dplyr::rename_with(.cols = !!to_id_sym,
+    #                    .fn = ~stringr::str_remove(.x, "_to"))
+
+  return(output_shapes)
+
+
+}

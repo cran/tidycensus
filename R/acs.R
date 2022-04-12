@@ -13,8 +13,9 @@
 #'   dataset.  If variables dataset is already cached via the
 #'   \code{load_variables} function, this can be bypassed.
 #' @param year The year, or endyear, of the ACS sample. 5-year ACS data is
-#'   available from 2009 through 2019. 1-year ACS data is available from 2005
-#'   through 2019. Defaults to 2019.
+#'   available from 2009 through 2020; 1-year ACS data is available from 2005
+#'   through 2019. Defaults to 2020; 1-year ACS users should supply a different year
+#'   directly.
 #' @param endyear Deprecated and will be removed in a future release.
 #' @param output One of "tidy" (the default) in which each row represents an
 #'   enumeration unit-variable combination, or "wide" in which each row
@@ -61,7 +62,7 @@
 #' census_api_key("YOUR KEY GOES HERE")
 #'
 #' tarr <- get_acs(geography = "tract", variables = "B19013_001",
-#'                 state = "TX", county = "Tarrant", geometry = TRUE)
+#'                 state = "TX", county = "Tarrant", geometry = TRUE, year = 2020)
 #'
 #' ggplot(tarr, aes(fill = estimate, color = estimate)) +
 #'   geom_sf() +
@@ -70,7 +71,7 @@
 #'   scale_color_viridis(option = "magma")
 #'
 #'
-#' vt <- get_acs(geography = "county", variables = "B19013_001", state = "VT")
+#' vt <- get_acs(geography = "county", variables = "B19013_001", state = "VT", year = 2019)
 #'
 #' vt %>%
 #' mutate(NAME = gsub(" County, Vermont", "", NAME)) %>%
@@ -85,11 +86,33 @@
 #' }
 #' @export
 get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FALSE,
-                    year = 2019, endyear = NULL, output = "tidy",
+                    year = 2020, endyear = NULL, output = "tidy",
                     state = NULL, county = NULL, zcta = NULL,
                     geometry = FALSE, keep_geo_vars = FALSE,
                     shift_geo = FALSE, summary_var = NULL, key = NULL,
                     moe_level = 90, survey = "acs5", show_call = FALSE, ...) {
+
+  if (survey == "acs1") {
+    message(sprintf("Getting data from the %s 1-year ACS", year))
+  } else if (survey == "acs3") {
+    startyear <- year - 2
+    message(sprintf("Getting data from the %s-%s 3-year ACS", startyear, year))
+  } else if (survey == "acs5") {
+    startyear <- year - 4
+    message(sprintf("Getting data from the %s-%s 5-year ACS", startyear, year))
+  }
+
+  # Error message for 1-year 2020 ACS
+  if (year == 2020 && survey == "acs1") {
+
+    msg_acs <- c(crayon::red(stringr::str_wrap("The regular 1-year ACS for 2020 was not released and is not available in tidycensus.")),
+                 i = crayon::cyan(stringr::str_wrap("Due to low response rates, the Census Bureau instead released a set of experimental estimates for the 2020 1-year ACS.")),
+                 i = crayon::cyan(stringr::str_wrap("These estimates can be downloaded at https://www.census.gov/programs-surveys/acs/data/experimental-data/1-year.html.")),
+                 i = crayon::green(stringr::str_wrap("1-year ACS data can still be accessed for other years by supplying an appropriate year to the `year` parameter.")))
+
+    rlang::abort(msg_acs)
+
+  }
 
   if (shift_geo) {
     warning("The `shift_geo` argument is deprecated and will be removed in a future release. We recommend using `tigris::shift_geometry()` instead.", call. = FALSE)
@@ -137,16 +160,6 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
       survey <- "acsse"
 
     }
-  }
-
-  if (survey == "acs1") {
-    message(sprintf("Getting data from the %s 1-year ACS", year))
-  } else if (survey == "acs3") {
-    startyear <- year - 2
-    message(sprintf("Getting data from the %s-%s 3-year ACS", startyear, year))
-  } else if (survey == "acs5") {
-    startyear <- year - 4
-    message(sprintf("Getting data from the %s-%s 5-year ACS", startyear, year))
   }
 
   if (Sys.getenv('CENSUS_API_KEY') != '') {
@@ -326,6 +339,10 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     if (any(grepl("^K[0-9].", variables))) {
       stop("At the moment, supplemental estimates variables cannot be combined with variables from other datasets.", call. = FALSE)
 
+    }
+
+    if (any(grepl("^CP[0-9].", variables))) {
+      stop("Comparison profiles variables cannot be mixed with variables from other datasets in tidycensus; please request CP data separately.", call. = FALSE)
     }
 
     message('Fetching data by table type ("B/C", "S", "DP") and combining the result.')
@@ -644,6 +661,8 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
       survey2 <- paste0(survey, "/profile")
     } else if (grepl("^K[0-9].", table)) {
       survey2 <- "acsse"
+    } else if (grepl("^CP[0-9].", table)) {
+      survey2 <- paste0(survey, "/cprofile")
     } else {
       survey2 <- survey
     }
@@ -791,7 +810,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
   }
 
   # For ZCTAs, strip the state code from GEOID (issue #338 and #358)
-  if (geography == "zip code tabulation area" && year > 2012) {
+  if (geography == "zip code tabulation area" && (year > 2012 && year < 2020)) {
     dat2 <- dat2 %>%
       dplyr::mutate(
         GEOID = stringr::str_sub(GEOID, start = 3L)
