@@ -11,6 +11,7 @@ interpolate_pw(
   extensive,
   weights,
   weight_column = NULL,
+  weight_placement = c("surface", "centroid"),
   crs = NULL
 )
 }
@@ -23,9 +24,11 @@ interpolate_pw(
 
 \item{extensive}{if \code{TRUE}, return weighted sums; if \code{FALSE}, return weighted means.}
 
-\item{weights}{An input spatial dataset to be used as weights. If the dataset is not of geometry type \code{POINT}, its centroids will be used.  For US-based applications, this will commonly be a Census block dataset obtained with the tigris or tidycensus packages.}
+\item{weights}{An input spatial dataset to be used as weights. If the dataset is not of geometry type \code{POINT}, it will be converted to points by the function with \code{sf::st_point_on_surface()}.  For US-based applications, this will commonly be a Census block dataset obtained with the tigris or tidycensus packages.}
 
 \item{weight_column}{(optional) a column in \code{weights} used for weighting in the interpolation process.  Typically this will be a column representing the population (or other weighting metric, like housing units) of the input weights dataset.  If \code{NULL} (the default), each feature in \code{weights} is given an equal weight of 1.}
+
+\item{weight_placement}{(optional) One of \code{"surface"}, where weight polygons are converted to points on polygon surfaces with \code{sf::st_point_on_surface()}, or \code{"centroid"}, where polygon centroids are used instead with \code{sf::st_centroid()}.  Defaults to \code{"surface"}.  This argument is not necessary if weights are already of geometry type \code{POINT}.}
 
 \item{crs}{(optional) The EPSG code of the output projected coordinate reference system (CRS). Useful as all input layers (\code{from}, \code{to}, and \code{weights}) must share the same CRS for the function to run correctly.}
 }
@@ -36,7 +39,7 @@ A dataset of class sf with the geometries and an ID column from \code{to} (the t
 A common use-case when working with time-series small-area Census data is to transfer data from one set of shapes (e.g. 2010 Census tracts) to another set of shapes (e.g. 2020 Census tracts). Population-weighted interpolation is one such solution to this problem that takes into account the distribution of the population within a Census unit to intelligently transfer data between incongruent units.
 }
 \details{
-The approach implemented here is based on Esri's data apportionment algorithm, in which an "apportionment layer" of points (referred to here as the \code{weights}) is used to determine how to weight areas of overlap between origin and target zones.  Users must supply a "from" dataset as an sf object (the dataset from which numeric columns will be interpolated) and a "to" dataset, also of class sf, that contains the target zones. A third sf object, the "weights", may be an object of geometry type \code{POINT} or polygons from which their centroids will be calculated.
+The approach implemented here is based on Esri's data apportionment algorithm, in which an "apportionment layer" of points (referred to here as the \code{weights}) is used to determine how to weight areas of overlap between origin and target zones.  Users must supply a "from" dataset as an sf object (the dataset from which numeric columns will be interpolated) and a "to" dataset, also of class sf, that contains the target zones. A third sf object, the "weights", may be an object of geometry type \code{POINT} or polygons from which points will be derived using \code{sf::st_point_on_surface()}.
 
 An intersection is computed between \code{from} and \code{to}, and a spatial join is computed between the intersection layer and the weights layer, represented as points.  A specified \code{weight_column} in \code{weights} will be used to determine the relative influence of each point on the allocation of values between \code{from} and \code{to}; if no weight column is specified, all points will be weighted equally.
 
