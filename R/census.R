@@ -76,7 +76,9 @@ get_decennial <- function(geography,
                                       "pl", "plnat", "aian",
                                       "aianprofile",
                                       "as", "gu", "vi", "mp",
-                                      "responserate", "pes"),
+                                      "responserate", "pes",
+                                      "dpvi", "dpgu", "dpas",
+                                      "dpmp"),
                           state = NULL,
                           county = NULL,
                           geometry = FALSE,
@@ -113,15 +115,8 @@ get_decennial <- function(geography,
     stop("`year` must be 2020 for voting districts.", call. = FALSE)
   }
 
-  if (Sys.getenv('CENSUS_API_KEY') != '') {
-
-    key <- Sys.getenv('CENSUS_API_KEY')
-
-  } else if (is.null(key)) {
-
-    stop('A Census API key is required.  Obtain one at http://api.census.gov/data/key_signup.html, and then supply the key to the `census_api_key()` function to use it throughout your tidycensus session.')
-
-  }
+  # Check for a Census API key and warn if missing
+  key <- get_census_api_key(key)
 
   if (year == 1990) {
     stop("The 1990 decennial Census endpoint has been removed by the Census Bureau. We will support 1990 data again when the endpoint is updated; in the meantime, we recommend using NHGIS (https://nhgis.org) and the ipumsr R package.", call. = FALSE)

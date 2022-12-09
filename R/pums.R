@@ -23,7 +23,7 @@
 #'   errors; one of \code{"person"}, \code{"housing"}, or \code{"both"}.
 #' @param recode If TRUE, recodes variable values using Census data dictionary
 #'   and creates a new \code{*_label} column for each variable that is recoded.
-#'   Available for 2017 - 2020 data. Defaults to FALSE.
+#'   Available for 2017 - 2021 data. Defaults to FALSE.
 #' @param return_vacant If TRUE, makes a separate request to the Census API to
 #'   retrieve microdata for vacant housing units, which are handled differently
 #'   in the API as they do not have person-level characteristics.  All person-level
@@ -93,16 +93,8 @@ get_pums <- function(variables = NULL,
     return_vacant <- TRUE
   }
 
-
-  if (Sys.getenv('CENSUS_API_KEY') != '') {
-
-    key <- Sys.getenv('CENSUS_API_KEY')
-
-  } else if (is.null(key)) {
-
-    stop('A Census API key is required.  Obtain one at http://api.census.gov/data/key_signup.html, and then supply the key to the `census_api_key()` function to use it throughout your tidycensus session.')
-
-  }
+  # Check for a Census API key and warn if missing
+  key <- get_census_api_key(key)
 
   # Account for missing PUMAs in 2008-2012 through 2011-2015 ACS samples
   if (year %in% 2012:2015 && survey == "acs5" && (!is.null(puma) || "PUMA" %in% variables)) {
