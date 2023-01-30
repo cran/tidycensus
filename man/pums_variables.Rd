@@ -5,7 +5,7 @@
 \alias{pums_variables}
 \title{Dataset with PUMS variables and codes}
 \format{
-An object of class \code{tbl_df} (inherits from \code{tbl}, \code{data.frame}) with 42410 rows and 12 columns.
+An object of class \code{tbl_df} (inherits from \code{tbl}, \code{data.frame}) with 47803 rows and 12 columns.
 }
 \usage{
 data(pums_variables)
@@ -40,7 +40,7 @@ coded values returned by the Census API and is used when \code{recode = TRUE}
 in \code{\link{get_pums}}.
 
 Because variable names and codes change from year to year, you should filter
-this dataset for the survey and year of interest. NOTE: 2017 - 2019 acs1 and
-2017 - 2020 acs5 variables are available.
+this dataset for the survey and year of interest. NOTE: 2017 - 2019 and 2021 acs1 and
+2017 - 2021 acs5 variables are available.
 }
 \keyword{datasets}
