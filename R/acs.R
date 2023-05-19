@@ -188,17 +188,9 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
          call. = FALSE)
   }
 
-  # Handle new definition of MSAs for 2021 and later (5-year ACS only)
+  # CBSA alias (fixes #514 by reverting back)
   if (geography == "cbsa") {
-    if (year > 2020 && survey == "acs5") {
-      geography <- "metropolitan/micropolitan statistical area"
-    } else {
-      geography <- "metropolitan statistical area/micropolitan statistical area"
-    }
-  }
-
-  if (geography == "metropolitan statistical area/micropolitan statistical area" && year >= 2021 && survey == "acs5") {
-    geography <- "metropolitan/micropolitan statistical area"
+    geography <- "metropolitan statistical area/micropolitan statistical area"
   }
 
   # Other aliases
@@ -412,9 +404,16 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
           ) %>%
           reduce(left_join, by = c("GEOID", "NAME"))
 
+        # NAME.x and NAME.y columns exist when keep_geo_vars = TRUE
+        if(keep_geo_vars) {
+            join_cols <- c("GEOID", "NAME.y" = "NAME")
+        } else {
+          join_cols <- c("GEOID", "NAME")
+        }
+
         # join non geo result to first result sf object
         result <- result_geo %>%
-          left_join(result_no_geo, by = c("GEOID", "NAME")) %>%
+          left_join(result_no_geo, by = join_cols) %>%
           select(-geometry, geometry)  # move geometry to last column
 
 
@@ -646,7 +645,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
   } else if (moe_level == 95) {
     moe_factor <- (1.96 / 1.645)
   } else if (moe_level == 99) {
-    moe_factor <- (2.56 / 1.645)
+    moe_factor <- (2.576 / 1.645)
   } else {
     stop("`moe_level` must be one of 90, 95, or 99.", call. = FALSE)
   }

@@ -47,7 +47,10 @@ utils::globalVariables(c("variable", "value", "GEOID", "NAME", "type", "moe",
                          "DATE_", "STATEFP00", "STATEFP10", "CNTYIDFP00", "CTIDFP00",
                          "BKGPIDFP00", "var_code", "val_label", "where", "pums_variables",
                          "data_type", "GEOID20", "intersection_id", "intersection_value",
-                         "level", "tidycensus_weight_total", "weight_coef"))
+                         "level", "tidycensus_weight_total", "weight_coef", "SUMLEV",
+                         "REGION", "DIVISION", "CTYNAME", "STNAME", "ALAND", "AWATER",
+                         "COUNTYFP", "COUNTYNS", "LSAD", "NAMELSAD", "STATEFP", "geometry",
+                         "CBSA", "CSA", "PLACE", "ZCTA", "ZCTA5CE00"))
 
 #' @importFrom rlang .data
 NULL
