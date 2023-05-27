@@ -167,6 +167,12 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
       year <- 2020
     }
 
+    # We can't pull ZCTA shapes by state for 2020 but this is
+    # an available hierarchy in the DHC.  So set state to NULL.
+    if (year == 2020) {
+      state <- NULL
+    }
+
     z <- zctas(cb = cb, starts_with = starts_with, year = year,
                class = "sf", state = state, ...)
 
@@ -303,9 +309,18 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
     # Right now, urban areas are not defined for 2020 and are not in the CB file
     if (year == 2020) cb <- FALSE
 
+    # The 2020 decennial Census uses the 2020 urban areas, but the 2020 ACS
+    # does not, so we will need to figure that out in the get_decennial side
+    # Pass that through as a keyword argument
+
     ua <- urban_areas(cb = cb, year = year, class = "sf", ...)
 
-    ua <- rename(ua, GEOID = GEOID10)
+    if ("GEOID20" %in% names(ua)) {
+      ua <- rename(ua, GEOID = GEOID20)
+    } else {
+      ua <- rename(ua, GEOID = GEOID10)
+    }
+
 
     return(ua)
 
@@ -573,7 +588,7 @@ variables_from_table_decennial <- function(table, year, sumfile, cache_table) {
 
   # Find all variables that match the table
 
-  if (year == 2020 && sumfile == "pl") {
+  if (year == 2020 && sumfile %in% c("pl", "dhc", "dp")) {
     vars <- df %>%
       filter(grepl(paste0(table, "_[0-9]+"), name)) %>%
       pull(name)

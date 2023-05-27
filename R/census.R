@@ -11,9 +11,9 @@
 #'                    Defaults to FALSE; if TRUE, only needs to be called once per
 #'                    dataset.  If variables dataset is already cached via the
 #'                    \code{load_variables} function, this can be bypassed.
-#' @param year The year for which you are requesting data. Defaults to 2010; 2000,
+#' @param year The year for which you are requesting data. Defaults to 2020; 2000,
 #'             2010, and 2020 are available.
-#' @param sumfile The Census summary file; defaults to \code{"sf1"} but will switch to \code{"pl"} if the year supplied is 2020.  Not all summary files are available for each decennial Census year.
+#' @param sumfile The Census summary file; defaults to \code{"pl"}.  Not all summary files are available for each decennial Census year.  Make sure you are using the correct summary file for your requested variables, as variable IDs may be repeated across summary files and represent different topics.
 #' @param state The state for which you are requesting data. State
 #'              names, postal codes, and FIPS codes are accepted.
 #'              Defaults to NULL.
@@ -22,8 +22,7 @@
 #'               to `state`.  Defaults to NULL.
 #' @param geometry if FALSE (the default), return a regular tibble of ACS data.
 #'                 if TRUE, uses the tigris package to return an sf tibble
-#'                 with simple feature geometry in the `geometry` column.  state, county, tract, and block group are
-#'                 supported for 2000 through 2020; block and ZCTA geometry are supported for 2000 and 2010.
+#'                 with simple feature geometry in the `geometry` column.
 #' @param output One of "tidy" (the default) in which each row represents an
 #'               enumeration unit-variable combination, or "wide" in which each
 #'               row represents an enumeration unit and the variables are in the
@@ -69,8 +68,9 @@ get_decennial <- function(geography,
                           variables = NULL,
                           table = NULL,
                           cache_table = FALSE,
-                          year = 2010,
-                          sumfile = c("sf1", "sf2", "sf3", "sf4",
+                          year = 2020,
+                          sumfile = c("pl", "dhc", "dp", "sf1", "sf2",
+                                      "sf3", "sf4",
                                       "sf2profile", "sf3profile",
                                       "sf4profile",
                                       "pl", "plnat", "aian",
@@ -108,7 +108,7 @@ get_decennial <- function(geography,
   }
 
   if (year == 2020 && sumfile == "pl" && geography == "public use microdata area") {
-    stop("PUMAs are not defined yet for the 2020 decennial Census.", call. = FALSE)
+    stop("PUMAs are not available in the 2020 PL file.", call. = FALSE)
   }
 
   if (geography == "voting district" && year != 2020) {
@@ -152,12 +152,12 @@ get_decennial <- function(geography,
 
   if (geography == "zcta") geography <- "zip code tabulation area"
 
-  if (geography == "zip code tabulation area" && !is.null(state)) {
-    geography <- "zip code tabulation area (or part)"
+  if (year == 2020 && sumfile == "pl" && geography == "zip code tabulation area") {
+    stop("ZCTAs are not available in the 2020 PL file.", call. = FALSE)
   }
 
-  if (year == 2020 && sumfile == "pl" && geography == "zip code tabulation area") {
-    stop("ZCTAs are not currently available for the 2020 decennial Census.", call. = FALSE)
+  if (geography == "zip code tabulation area" && !is.null(state)) {
+    geography <- "zip code tabulation area (or part)"
   }
 
   # if (geography == "zip code tabulation area" && is.null(state)) {
@@ -338,6 +338,17 @@ get_decennial <- function(geography,
       }
     }
 
+    # Convert missing values to NA
+    dat2[dat2 == -111111111] <- NA
+    dat2[dat2 == -222222222] <- NA
+    dat2[dat2 == -333333333] <- NA
+    dat2[dat2 == -444444444] <- NA
+    dat2[dat2 == -555555555] <- NA
+    dat2[dat2 == -666666666] <- NA
+    dat2[dat2 == -777777777] <- NA
+    dat2[dat2 == -888888888] <- NA
+    dat2[dat2 == -999999999] <- NA
+
   } else if (output == "wide") {
 
     dat <- dat[!duplicated(names(dat), fromLast = TRUE)]
@@ -350,9 +361,29 @@ get_decennial <- function(geography,
       }
     }
 
+    # Convert missing values to NA
+    dat2[dat2 == -111111111] <- NA
+    dat2[dat2 == -222222222] <- NA
+    dat2[dat2 == -333333333] <- NA
+    dat2[dat2 == -444444444] <- NA
+    dat2[dat2 == -555555555] <- NA
+    dat2[dat2 == -666666666] <- NA
+    dat2[dat2 == -777777777] <- NA
+    dat2[dat2 == -888888888] <- NA
+    dat2[dat2 == -999999999] <- NA
+
     dat2 <- dat2 %>%
       select(GEOID, NAME, everything())
 
+  }
+
+  # For ZCTAs, strip the state code from GEOID (issue #338 and #358)
+  # Should only happen if the GEOID is 7 characters
+  if (geography == "zip code tabulation area (or part)" && year == 2020 && unique(nchar(dat2$GEOID)) == 7) {
+    dat2 <- dat2 %>%
+      dplyr::mutate(
+        GEOID = stringr::str_sub(GEOID, start = 3L)
+      )
   }
 
   if (!is.null(summary_var)) {
@@ -363,6 +394,13 @@ get_decennial <- function(geography,
     if (inherits(sumdat, "try-error")) {
       sumdat <- suppressMessages(try(load_data_decennial(geography, summary_var, key, year,
                                                          sumfile = "sf3", state, county, show_call = show_call)))
+    }
+
+    if (geography == "zip code tabulation area (or part)" && year == 2020 && unique(nchar(dat2$GEOID)) == 7) {
+      dat2 <- dat2 %>%
+        dplyr::mutate(
+          GEOID = stringr::str_sub(GEOID, start = 3L)
+        )
     }
 
     dat2 <- dat2 %>%
@@ -397,8 +435,13 @@ get_decennial <- function(geography,
 
     } else {
 
-      geom <- try(suppressMessages(use_tigris(geography = geography, year = year,
-                                              state = state, county = county, ...)))
+      if (geography == "urban area" && year == 2020) {
+        geom <- try(suppressMessages(use_tigris(geography = geography, year = year,
+                                                state = state, county = county, criteria = "2020", ...)))
+      } else {
+        geom <- try(suppressMessages(use_tigris(geography = geography, year = year,
+                                                state = state, county = county, ...)))
+      }
 
       if ("try-error" %in% class(geom)) {
         stop("Your geometry data download failed. Please try again later or check the status of the Census Bureau website at https://www2.census.gov/geo/tiger/", call. = FALSE)
@@ -424,7 +467,7 @@ get_decennial <- function(geography,
     # Give users a heads-up about differential privacy in the 2020 decennial data
     # This should print as the final message before data are returned
     # For right now, this pertains to the PL file; adjust when new data come out in 2023
-    if (year == 2020 && sumfile == "pl") {
+    if (year == 2020) {
 
       msg <- c(crayon::cyan(stringr::str_wrap("Note: 2020 decennial Census data use differential privacy, a technique that introduces errors into data to preserve respondent confidentiality.")),
                i = crayon::magenta("Small counts should be interpreted with caution."),
@@ -442,7 +485,7 @@ get_decennial <- function(geography,
     # Give users a heads-up about differential privacy in the 2020 decennial data
     # This should print as the final message before data are returned
     # For right now, this pertains to the PL file; adjust when new data come out in 2023
-    if (year == 2020 && sumfile == "pl") {
+    if (year == 2020) {
 
       msg <- c(crayon::cyan(stringr::str_wrap("Note: 2020 decennial Census data use differential privacy, a technique that introduces errors into data to preserve respondent confidentiality.")),
                i = crayon::magenta("Small counts should be interpreted with caution."),
