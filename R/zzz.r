@@ -32,6 +32,8 @@ fips_state_table <- structure(list(abb = c("ak", "al", "ar", "as", "az", "ca", "
 population_estimates_variables <- c("POP", "DENSITY")
 components_estimates_variables <- c("BIRTHS", "DEATHS","DOMESTICMIG","INTERNATIONALMIG","NATURALINC","NETMIG","RBIRTH","RDEATH","RDOMESTICMIG","RINTERNATIONALMIG","RNATURALINC","RNETMIG")
 housing_estimates_variables <- "HUEST"
+population_estimates_variables22 <- c("POPESTIMATE", "NPOPCHG")
+components_estimates_variables22 <- c("BIRTHS", "DEATHS", "NATURALCHG", "DOMESTICMIG","INTERNATIONALMIG","NETMIG","RBIRTH","RDEATH","RDOMESTICMIG","RINTERNATIONALMIG","RNATURALCHG","RNETMIG","RESIDUAL")
 
 
 .onLoad <- function(libname, pkgname) {
@@ -50,7 +52,9 @@ utils::globalVariables(c("variable", "value", "GEOID", "NAME", "type", "moe",
                          "level", "tidycensus_weight_total", "weight_coef", "SUMLEV",
                          "REGION", "DIVISION", "CTYNAME", "STNAME", "ALAND", "AWATER",
                          "COUNTYFP", "COUNTYNS", "LSAD", "NAMELSAD", "STATEFP", "geometry",
-                         "CBSA", "CSA", "PLACE", "ZCTA", "ZCTA5CE00"))
+                         "CBSA", "CSA", "PLACE", "ZCTA", "ZCTA5CE00", "AGE", "AGEGROUP", "AGEGRP",
+                         "HISP", "HNAC_FEMALE", "ORIGIN", "POPESTIMATE2020",
+                         "POPESTIMATE2022", "RACE", "SEX", "TOT_POP", "YEAR", "category"))
 
 #' @importFrom rlang .data
 NULL
