@@ -5,7 +5,7 @@
 #' \code{load_variables()} returns three columns by default: \code{name}, which is the Census ID code to be supplied to the \code{variables} parameter in \code{get_decennial()} or \code{get_acs()}; \code{label}, which is a detailed description of the variable; and \code{concept}, which provides information about the table that a given variable belongs to.  For 5-year ACS detailed tables datasets, a fourth column, \code{geography}, tells you the smallest geography at which a given variable is available.
 #'
 #' Datasets available are as follows: "sf1", "sf2", "sf3", "sf4", "pl", "dhc", "dp",
-#' "as", "gu", "mp", "vi", "acsse",
+#' "dhca", "ddhca", "as", "gu", "mp", "vi", "acsse",
 #' "dpas", "dpgu", "dpmp", "dpvi",
 #' "dhcvi", "dhcgu", "dhcvi", "dhcas",
 #' "acs1", "acs3", "acs5", "acs1/profile",
@@ -15,7 +15,7 @@
 #' "sf4profile", "aian", "aianprofile",
 #' "cd110h", "cd110s", "cd110hprofile", "cd110sprofile", "sldh",
 #' "slds", "sldhprofile", "sldsprofile", "cqr",
-#' "cd113", "cd113profile", "cd115", "cd115profile", "cd116", and
+#' "cd113", "cd113profile", "cd115", "cd115profile", "cd116", "cd118", and
 #' "plnat".
 #'
 #' @param year The year for which you are requesting variables. Either the year
@@ -36,7 +36,7 @@
 load_variables <- function(
   year,
   dataset = c("sf1", "sf2", "sf3", "sf4", "pl", "dhc", "dp",
-              "as", "gu", "mp", "vi", "acsse",
+              "ddhca", "as", "gu", "mp", "vi", "acsse",
               "dpas", "dpgu", "dpmp", "dpvi",
               "dhcvi", "dhcgu", "dhcvi", "dhcas",
               "acs1", "acs3", "acs5", "acs1/profile",
@@ -47,7 +47,7 @@ load_variables <- function(
               "cd110h", "cd110s", "cd110hprofile", "cd110sprofile", "sldh",
               "slds", "sldhprofile", "sldsprofile", "cqr",
               "cd113", "cd113profile", "cd115", "cd115profile", "cd116",
-              "plnat"),
+              "plnat", "cd118"),
   cache = FALSE) {
 
   if (length(year) != 1 || !grepl('[0-9]{4}', year)){
@@ -94,7 +94,7 @@ load_variables <- function(
     var_type <- split[2]
   }
 
-  if (dataset %in% c("sf1", "sf2", "sf3", "sf4", "pl",
+  if (dataset %in% c("sf1", "sf2", "sf3", "sf4", "pl", "ddhca",
                      "as", "gu", "mp", "vi", "dhc", "dp",
                      "dpas", "dpgu", "dpmp", "dpvi",
                      "dhcvi", "dhcgu", "dhcvi", "dhcas",
@@ -103,7 +103,7 @@ load_variables <- function(
                      "cd110h", "cd110s", "cd110hprofile", "cd110sprofile", "sldh",
                      "slds", "sldhprofile", "sldsprofile", "cqr",
                      "cd113", "cd113profile", "cd115", "cd115profile", "cd116",
-                     "plnat")) {
+                     "plnat", "cd118")) {
     dataset <- paste0("dec/", dataset)
   }
 
@@ -142,7 +142,7 @@ load_variables <- function(
 
     names(out) <- tolower(names(out))
 
-    out1 <- out[grepl("^B[0-9]|^C[0-9]|^DP[0-9]|^S[0-9]|^P.*[0-9]|^H.*[0-9]|^K[0-9]|^CP[0-9]",
+    out1 <- out[grepl("^B[0-9]|^C[0-9]|^DP[0-9]|^S[0-9]|^P.*[0-9]|^H.*[0-9]|^K[0-9]|^CP[0-9]|^T[0-9]",
                       out$name), ]
 
     out1$name <- stringr::str_replace(out1$name, "E$|M$", "")
