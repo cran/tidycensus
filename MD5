@@ -1,11 +1,11 @@
-eac46582bad245764513009443f1020a *DESCRIPTION
+48b7436c3242e071901cf9cb71248ed6 *DESCRIPTION
 1c9f9ed716ec4a5bcd6fc7c413d14179 *LICENSE
 eb69118f6b5ee2afd65c2619695cf176 *NAMESPACE
-4ecf90217d618e2ae1792cfb820c5cf0 *NEWS.md
+966cc88901eece7c5659f2edd4bf7f28 *NEWS.md
 676932ce8ecef337f0c40d78cac9fd50 *R/acs.R
 1636ffc8dcc656f89dc56ac3b3ccf020 *R/albers.R
 4e5dce84e1937d74a97a4ccdb99b74fe *R/census.R
-362a689ed0b47ce05072d190dfb81b7b *R/estimates.R
+a07ddc3210753cba0508ae514d73481a *R/estimates.R
 4327be26a32b6ab0c84a05a8540e5941 *R/fips_codes.R
 daea51dbc55444a709e7e7dc5394fe55 *R/flows.R
 dcdc8d045ff4a098e6e13729da9917b9 *R/helpers.R
@@ -19,7 +19,7 @@ c9c66a8d6aecb6a715c565586b0387d7 *R/sysdata.rda
 5fa19877b67d989880065ed1c6c40f86 *R/tidycensus-package.R
 918437ae8c53b3d1374d400c5b8fc609 *R/utils.R
 c6398c9bd83ab42b91fd9ddef8ae3200 *R/validate_call.R
-c9cc71697f9762923a7ee4ab4a4f1478 *R/zzz.r
+7e2a93ef632ec809f04ef2489d7a7943 *R/zzz.r
 a0ecfc685ffb8a6cac1f68be6a10c964 *README.md
 93efbfd57477c3e0a8469b459c8232ef *data/acs5_geography.rda
 7c18f03d2eeaf8b59dbb89fab3d5ef80 *data/county_laea.rda
@@ -35,7 +35,7 @@ a19cc1075a425c36a2429cdde05bdb03 *man/check_ddhca_groups.Rd
 b2c29feacac9256e7044fb21c78dc95c *man/fips_codes.Rd
 1dece16d58a9ba1f84d956630d07ff38 *man/get_acs.Rd
 df47dd611b0af8dbe73e6c2df4cacc5d *man/get_decennial.Rd
-4eb970143a4f1d1c3290f55ab31a143f *man/get_estimates.Rd
+ff0942b284c78d96e6c35ff6ccbb624f *man/get_estimates.Rd
 73932ce5a0786f17ded25e019962488c *man/get_flows.Rd
 1b6cc943d36240b6688347d905bcc662 *man/get_pop_groups.Rd
 d7ccbd31ff5479d184ed341305367a84 *man/get_pums.Rd
