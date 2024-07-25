@@ -1,11 +1,11 @@
-48b7436c3242e071901cf9cb71248ed6 *DESCRIPTION
+85032ce4256f4c3f99c2dd8b5dbac948 *DESCRIPTION
 1c9f9ed716ec4a5bcd6fc7c413d14179 *LICENSE
 eb69118f6b5ee2afd65c2619695cf176 *NAMESPACE
 966cc88901eece7c5659f2edd4bf7f28 *NEWS.md
-676932ce8ecef337f0c40d78cac9fd50 *R/acs.R
+d75a50db2087fb42846858705b0b181f *R/acs.R
 1636ffc8dcc656f89dc56ac3b3ccf020 *R/albers.R
 4e5dce84e1937d74a97a4ccdb99b74fe *R/census.R
-a07ddc3210753cba0508ae514d73481a *R/estimates.R
+fef693a64caa237ecb73e67c3ce23222 *R/estimates.R
 4327be26a32b6ab0c84a05a8540e5941 *R/fips_codes.R
 daea51dbc55444a709e7e7dc5394fe55 *R/flows.R
 dcdc8d045ff4a098e6e13729da9917b9 *R/helpers.R
@@ -17,7 +17,7 @@ f11879fb950b2da23069c30082f97245 *R/search_variables.R
 f9095e7e1663e162d94a32bb54d40526 *R/significance.R
 c9c66a8d6aecb6a715c565586b0387d7 *R/sysdata.rda
 5fa19877b67d989880065ed1c6c40f86 *R/tidycensus-package.R
-918437ae8c53b3d1374d400c5b8fc609 *R/utils.R
+5b040148dab280b27a5c1f3a4932cc9c *R/utils.R
 c6398c9bd83ab42b91fd9ddef8ae3200 *R/validate_call.R
 7e2a93ef632ec809f04ef2489d7a7943 *R/zzz.r
 a0ecfc685ffb8a6cac1f68be6a10c964 *README.md
@@ -50,7 +50,7 @@ c10e0c26ae45f452f743495dd028be6b *man/pums_variables.Rd
 06fe1395588a1f12c350d9ad9c2493ae *man/significance.Rd
 de8be242b361526307ea29924ba41fcf *man/state_laea.Rd
 d5608f5e500dd25de6c3d18e39cc9181 *man/summary_files.Rd
-749119c8229aee429b931fcc58af8394 *man/tidycensus.Rd
+cfeb0ad67cea75aaf68ca4a6d36c62bf *man/tidycensus.Rd
 f9a5d968761dce5d84a878321f1b00fc *man/to_survey.Rd
 87b00f589115a3b7e70e0ae4fd42daf4 *tools/readme/county_income.png
 27503b88810e792d7e303bbfbd420323 *tools/readme/tidycensus_sticker.png

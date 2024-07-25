@@ -103,13 +103,13 @@ get_estimates <- function(geography = c("us", "region", "division", "state", "co
           rlang::abort("The only supported geographies at this time for population characteristics 2020 and later are 'state' and 'county'.")
         }
 
-        if (vintage > 2022) {
-          rlang::abort("The Characteristics dataset has not yet been released for vintages beyond 2022.")
+        if (vintage > 2023) {
+          rlang::abort("The Characteristics dataset has not yet been released for vintages beyond 2023")
         }
 
         if (geography == "state") {
 
-          state_raw <- suppressMessages(readr::read_csv("https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/state/asrh/sc-est2022-alldata6.csv"))
+          state_raw <- suppressMessages(readr::read_csv(sprintf("https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/state/asrh/sc-est%s-alldata6.csv", vintage, vintage)))
 
           if (!is.null(state)) {
             state <- validate_state(state)
@@ -125,7 +125,7 @@ get_estimates <- function(geography = c("us", "region", "division", "state", "co
                           NAME:SEX,
                           HISP = ORIGIN,
                           RACE:AGE,
-                          POPESTIMATE2020:POPESTIMATE2022) %>%
+                          dplyr::contains("POPESTIMATE")) %>%
             dplyr::mutate(AGEGROUP = dplyr::case_when(
               AGE %in% 0:4 ~ 1,
               AGE %in% 5:9 ~ 2,
@@ -147,7 +147,7 @@ get_estimates <- function(geography = c("us", "region", "division", "state", "co
               AGE == 85 ~ 18
             )) %>%
             tidyr::pivot_longer(
-              POPESTIMATE2020:POPESTIMATE2022,
+              dplyr::contains("POPESTIMATE"),
               names_to = "year",
               values_to = "value",
               names_prefix = "POPESTIMATE"
@@ -156,13 +156,17 @@ get_estimates <- function(geography = c("us", "region", "division", "state", "co
 
         } else if (geography == "county") {
 
+          if (vintage > 2023) {
+            rlang::abort("The county characteristics dataset for this vintage has not yet been released.")
+          }
+
           if (!is.null(state)) {
             state <- validate_state(state)
 
-            county_raw <- suppressMessages(readr::read_csv(sprintf("https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/counties/asrh/cc-est2022-alldata-%s.csv", state)))
+            county_raw <- suppressMessages(readr::read_csv(sprintf("https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-alldata-%s.csv", vintage, vintage, state)))
 
           } else {
-            county_raw <- suppressMessages(readr::read_csv("https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/counties/asrh/cc-est2022-all.csv"))
+            county_raw <- suppressMessages(readr::read_csv(sprintf("https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-all.csv", vintage, vintage)))
           }
 
 
@@ -230,7 +234,8 @@ get_estimates <- function(geography = c("us", "region", "division", "state", "co
             dplyr::mutate(year = dplyr::case_when(
               year == 2 ~ 2020L,
               year == 3 ~ 2021L,
-              year == 4 ~ 2022L
+              year == 4 ~ 2022L,
+              year == 5 ~ 2023L
             ))
 
         } else {
@@ -482,11 +487,11 @@ get_estimates <- function(geography = c("us", "region", "division", "state", "co
 
         } else if (geography == "place") {
 
-          if (vintage > 2022) {
-            rlang::abort("The most recent PEP release for this geography is 2022.")
-          }
+          # if (vintage > 2022) {
+          #   rlang::abort("The most recent PEP release for this geography is 2022.")
+          # }
 
-          raw <- suppressMessages(readr::read_csv("https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/cities/totals/sub-est2022.csv")) %>%
+          raw <- suppressMessages(readr::read_csv(sprintf("https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/cities/totals/sub-est%s.csv", vintage, vintage))) %>%
             dplyr::filter(SUMLEV == "162") %>%
             dplyr::mutate(GEOID = paste0(STATE, PLACE),
                           NAME = paste0(NAME, ", ", STNAME))
