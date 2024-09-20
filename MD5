@@ -1,4 +1,4 @@
-85032ce4256f4c3f99c2dd8b5dbac948 *DESCRIPTION
+b1fa2c2d7d72cf8e9fb8ed8bb844d3c0 *DESCRIPTION
 1c9f9ed716ec4a5bcd6fc7c413d14179 *LICENSE
 eb69118f6b5ee2afd65c2619695cf176 *NAMESPACE
 966cc88901eece7c5659f2edd4bf7f28 *NEWS.md
@@ -8,16 +8,16 @@ d75a50db2087fb42846858705b0b181f *R/acs.R
 fef693a64caa237ecb73e67c3ce23222 *R/estimates.R
 4327be26a32b6ab0c84a05a8540e5941 *R/fips_codes.R
 daea51dbc55444a709e7e7dc5394fe55 *R/flows.R
-dcdc8d045ff4a098e6e13729da9917b9 *R/helpers.R
+1867f100fae4bd4b821929372d3fc069 *R/helpers.R
 1e2ee9034b4e0787b94cb2a3d1c756fc *R/load_data.R
 a3bdd4082338ab999ab0cb96870d7d2b *R/moe.R
 18d8c3489461f9466f0765b6a38aea4a *R/popgroups.R
 64e7733bc31ca2719f62262108467919 *R/pums.R
-f11879fb950b2da23069c30082f97245 *R/search_variables.R
+9d36d02330c274a9e45bf87d9f2d8c66 *R/search_variables.R
 f9095e7e1663e162d94a32bb54d40526 *R/significance.R
 c9c66a8d6aecb6a715c565586b0387d7 *R/sysdata.rda
 5fa19877b67d989880065ed1c6c40f86 *R/tidycensus-package.R
-5b040148dab280b27a5c1f3a4932cc9c *R/utils.R
+963a69373b08a58df4cba7d746b00495 *R/utils.R
 c6398c9bd83ab42b91fd9ddef8ae3200 *R/validate_call.R
 7e2a93ef632ec809f04ef2489d7a7943 *R/zzz.r
 a0ecfc685ffb8a6cac1f68be6a10c964 *README.md
@@ -39,8 +39,8 @@ ff0942b284c78d96e6c35ff6ccbb624f *man/get_estimates.Rd
 73932ce5a0786f17ded25e019962488c *man/get_flows.Rd
 1b6cc943d36240b6688347d905bcc662 *man/get_pop_groups.Rd
 d7ccbd31ff5479d184ed341305367a84 *man/get_pums.Rd
-5f5ef7970fa6639f5741af0e03728220 *man/interpolate_pw.Rd
-c722924a3a8fcdf7dbbbab7fed02c8be *man/load_variables.Rd
+914eb7ec5c51291ae0664f671521d6d1 *man/interpolate_pw.Rd
+a5d960819a9a710e666af2292fbb708e *man/load_variables.Rd
 e19ade169e4c3c580e4fa134ad12cd71 *man/mig_recodes.Rd
 68e5d139d85e5c27d1459c41e37fc98e *man/moe_product.Rd
 3f5de5250902088abb953140daa04c3f *man/moe_prop.Rd
