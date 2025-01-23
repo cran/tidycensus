@@ -2,12 +2,12 @@ Package: tidycensus
 Type: Package
 Title: Load US Census Boundary and Attribute Data as 'tidyverse' and
         'sf'-Ready Data Frames
-Version: 1.6.7
+Version: 1.7.0
 Authors@R: c(
     person(given = "Kyle", family = "Walker", email="kyle@walker-data.com", role=c("aut", "cre")),
     person(given = "Matt", family = "Herman", email = "mfherman@gmail.com", role = "aut"),
     person(given = "Kris", family = "Eberwein", email = "eberwein@knights.ucf.edu", role = "ctb"))
-Date: 2024-10-17
+Date: 2025-01-23
 URL: https://walker-data.com/tidycensus/
 BugReports: https://github.com/walkerke/tidycensus/issues
 Description: An integrated R interface to several United States Census Bureau 
@@ -23,12 +23,12 @@ Imports: httr, sf, dplyr (>= 1.0.0), tigris, stringr, jsonlite (>=
         1.5.0), purrr, rvest, tidyr (>= 1.0.0), rappdirs, readr, xml2,
         units, utils, rlang, crayon, tidyselect
 Suggests: ggplot2, survey, srvyr, terra
-RoxygenNote: 7.3.1
+RoxygenNote: 7.3.2
 NeedsCompilation: no
-Packaged: 2024-10-17 18:53:35 UTC; kylewalker
+Packaged: 2025-01-23 19:24:25 UTC; kylewalker
 Author: Kyle Walker [aut, cre],
   Matt Herman [aut],
   Kris Eberwein [ctb]
 Maintainer: Kyle Walker <kyle@walker-data.com>
 Repository: CRAN
-Date/Publication: 2024-10-17 19:20:02 UTC
+Date/Publication: 2025-01-23 19:50:02 UTC
