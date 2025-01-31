@@ -1,4 +1,4 @@
-b43e3f42e597e4e5edb9d6d6ae188cc5 *DESCRIPTION
+ed70478f454c6f83c325479251712755 *DESCRIPTION
 1c9f9ed716ec4a5bcd6fc7c413d14179 *LICENSE
 eb69118f6b5ee2afd65c2619695cf176 *NAMESPACE
 0c1e4368f07ec377c1e4245da63cb0ce *NEWS.md
@@ -12,7 +12,7 @@ daea51dbc55444a709e7e7dc5394fe55 *R/flows.R
 b6840a826cd76274a5f6e2b4d6862a70 *R/load_data.R
 a3bdd4082338ab999ab0cb96870d7d2b *R/moe.R
 18d8c3489461f9466f0765b6a38aea4a *R/popgroups.R
-3563e224925eaabdaaba2347f405509f *R/pums.R
+a099a16b637d4e18c57ac552ea5be6b7 *R/pums.R
 9d36d02330c274a9e45bf87d9f2d8c66 *R/search_variables.R
 f9095e7e1663e162d94a32bb54d40526 *R/significance.R
 c9c66a8d6aecb6a715c565586b0387d7 *R/sysdata.rda
@@ -25,7 +25,7 @@ a0ecfc685ffb8a6cac1f68be6a10c964 *README.md
 7c18f03d2eeaf8b59dbb89fab3d5ef80 *data/county_laea.rda
 c3996e60064a6d4f9b3f18075a0b7948 *data/fips_codes.rda
 b551cbf69dd351f95568b5d001c22ce2 *data/mig_recodes.rda
-4902c9e821fe203a15495eb592a113cd *data/pums_variables.rda
+b9d3c4de5b35aa27e14fc5a90c73b6d7 *data/pums_variables.rda
 b01670f3c187445ec7d1eb5804f75d2d *data/state_laea.rda
 954671675f15ce6ccf503a19eb257fa4 *man/acs5_geography.Rd
 ed2eed374e730b024078e10b2f751efa *man/as_dot_density.Rd
@@ -46,7 +46,7 @@ e19ade169e4c3c580e4fa134ad12cd71 *man/mig_recodes.Rd
 3f5de5250902088abb953140daa04c3f *man/moe_prop.Rd
 db6b8c5ba9fed7b6a6f25f5b8f32a70d *man/moe_ratio.Rd
 ef164939528267989b1ee5b8db31ff1e *man/moe_sum.Rd
-b4c6b7734f2c7d64802375d02bb2ed5b *man/pums_variables.Rd
+6308d5231580b2b7b55d43d3211160a4 *man/pums_variables.Rd
 06fe1395588a1f12c350d9ad9c2493ae *man/significance.Rd
 de8be242b361526307ea29924ba41fcf *man/state_laea.Rd
 d5608f5e500dd25de6c3d18e39cc9181 *man/summary_files.Rd

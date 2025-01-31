@@ -97,9 +97,9 @@ get_pums <- function(variables = NULL,
   key <- get_census_api_key(key)
 
   # Account for missing PUMAs in 2008-2012 through 2011-2015 ACS samples
-  if (year %in% c(2012:2015, 2022:2023) && survey == "acs5" && (!is.null(puma) || "PUMA" %in% variables)) {
+  if (year %in% c(2012:2015, 2022) && survey == "acs5" && (!is.null(puma) || "PUMA" %in% variables)) {
     rlang::abort(message = c(
-      "PUMAs are not available for the 5-year ACS with end-years between 2012 and 2015, and 2022-2023, due to inconsistent PUMA boundary definitions.",
+      "PUMAs are not available for the 5-year ACS with end-years between 2012 and 2015, and 2022, due to inconsistent PUMA boundary definitions.",
       i = "Users can use the `PUMA00`, `PUMA10`, and `PUMA20` variables for year-specific PUMAs in these datasets.",
       i = "See https://github.com/walkerke/tidycensus/issues/555 for discussion."
     ))
@@ -202,10 +202,17 @@ get_pums <- function(variables = NULL,
     # merge that in as well
 
     if (recode) {
-      if (!is.null(puma)) {
-        join_vars <- c(join_vars, "ST_label", "PUMA")
+
+      if (year < 2023) {
+        state_label <- "ST_label"
       } else {
-        join_vars <- c(join_vars, "ST_label")
+        state_label <- "STATE_label"
+      }
+
+      if (!is.null(puma)) {
+        join_vars <- c(join_vars, state_label, "PUMA")
+      } else {
+        join_vars <- c(join_vars, state_label)
       }
     } else {
       if (!is.null(puma)) {
