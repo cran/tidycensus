@@ -1,11 +1,11 @@
-ed70478f454c6f83c325479251712755 *DESCRIPTION
+9a06e6d77c9e24d66f26efbdb9a686cd *DESCRIPTION
 1c9f9ed716ec4a5bcd6fc7c413d14179 *LICENSE
 eb69118f6b5ee2afd65c2619695cf176 *NAMESPACE
 0c1e4368f07ec377c1e4245da63cb0ce *NEWS.md
 5b50f5a5e3e1ba0df7b991a379974fa6 *R/acs.R
 1636ffc8dcc656f89dc56ac3b3ccf020 *R/albers.R
 4e5dce84e1937d74a97a4ccdb99b74fe *R/census.R
-543473d4f68370a9bec3458f6eaa4ece *R/estimates.R
+fa524f41ad9ad9cee081edacb7993a57 *R/estimates.R
 4327be26a32b6ab0c84a05a8540e5941 *R/fips_codes.R
 daea51dbc55444a709e7e7dc5394fe55 *R/flows.R
 1867f100fae4bd4b821929372d3fc069 *R/helpers.R
@@ -17,7 +17,7 @@ a099a16b637d4e18c57ac552ea5be6b7 *R/pums.R
 f9095e7e1663e162d94a32bb54d40526 *R/significance.R
 c9c66a8d6aecb6a715c565586b0387d7 *R/sysdata.rda
 d4e5e6e23923775dba20f749d70c1fa7 *R/tidycensus-package.R
-963a69373b08a58df4cba7d746b00495 *R/utils.R
+8d651bad1193db6f6b894cf6ac76ea46 *R/utils.R
 c6398c9bd83ab42b91fd9ddef8ae3200 *R/validate_call.R
 7e2a93ef632ec809f04ef2489d7a7943 *R/zzz.r
 a0ecfc685ffb8a6cac1f68be6a10c964 *README.md
@@ -35,7 +35,7 @@ a19cc1075a425c36a2429cdde05bdb03 *man/check_ddhca_groups.Rd
 b2c29feacac9256e7044fb21c78dc95c *man/fips_codes.Rd
 9ef399d8742b272a1029b4f62a4e77b9 *man/get_acs.Rd
 df47dd611b0af8dbe73e6c2df4cacc5d *man/get_decennial.Rd
-ff0942b284c78d96e6c35ff6ccbb624f *man/get_estimates.Rd
+314449a66f27ecdb1e9aa71f49d4f6e7 *man/get_estimates.Rd
 73932ce5a0786f17ded25e019962488c *man/get_flows.Rd
 1b6cc943d36240b6688347d905bcc662 *man/get_pop_groups.Rd
 88574544684cd394a4777a4db5403b47 *man/get_pums.Rd
