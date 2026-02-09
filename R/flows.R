@@ -239,7 +239,7 @@ get_flows <- function(geography, variables = NULL, breakdown = NULL,
       # join back to original data and drop id col
       dat <- to_recode %>%
         dplyr::left_join(recoded_wide, by = "id") %>%
-        dplyr::select(-id)
+        dplyr::select(-.data$id)
 
     # # we need to know all the possible vars NOT to pivot if ouput = tidy in next steop
     # all_breakdown_vars <- c(all_breakdown_vars, breakdown_ordered)

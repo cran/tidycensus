@@ -15,11 +15,11 @@ moe_sum <- function(moe, estimate = NULL, na.rm = FALSE) {
     # ID those MOE values with 0 estimates
     zeros <- estimate == 0
 
-    # Reduce the vector and keep the first one
-    onezero <- unique(moe[zeros])
+    # Use the largest MOE among zero estimates (per Census guidance)
+    max_zero_moe <- max(moe[zeros], na.rm = TRUE)
 
     # Combine with the non-zeros
-    forcalc <- c(onezero, moe[!zeros])
+    forcalc <- c(max_zero_moe, moe[!zeros])
 
   } else if (is.null(estimate)) {
     warning("You have not specified the estimates associated with the margins of error.  In the event that your calculation involves multiple zero estimates, this will unnaturally inflate the derived margin of error.", call. = FALSE)

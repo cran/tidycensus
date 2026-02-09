@@ -49,7 +49,7 @@ combinations of these breakdowns.  For years 2020 and later, \code{"AGE"} is als
 \code{product = "characteristics"}. Defaults to FALSE.}
 
 \item{vintage}{It is recommended to use the most recent vintage
-available for a given decennial series (so, year = 2019 for the 2010s, and year = 2023 for the 2020s).  Will default to 2022 until the full PEP for 2023 is released.}
+available for a given decennial series (so, year = 2019 for the 2010s, and year = 2025 for the 2020s).}
 
 \item{year}{The data year (defaults to the vintage requested). Use \code{time_series = TRUE} to access time-series estimates.}
 

@@ -23,7 +23,7 @@
 #' @param breakdown_labels Whether or not to label breakdown elements returned when
 #'                         \code{product = "characteristics"}. Defaults to FALSE.
 #' @param vintage It is recommended to use the most recent vintage
-#'             available for a given decennial series (so, year = 2019 for the 2010s, and year = 2023 for the 2020s).  Will default to 2022 until the full PEP for 2023 is released.
+#'             available for a given decennial series (so, year = 2019 for the 2010s, and year = 2025 for the 2020s).
 #' @param year The data year (defaults to the vintage requested). Use \code{time_series = TRUE} to access time-series estimates.
 #' @param state The state for which you are requesting data. State
 #'              names, postal codes, and FIPS codes are accepted.
@@ -148,7 +148,7 @@ get_estimates <- function(
           silent = TRUE
         ))
 
-        if (inherits(state_raw, "try-error")) {
+        if (inherits(state_raw, "try-error") || !"STATE" %in% names(state_raw)) {
           state_raw <- suppressMessages(readr::read_csv(sprintf(
             "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/asrh/sc-est%s-alldata6.csv",
             vintage,
@@ -222,7 +222,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(county_raw, "try-error")) {
+          if (inherits(county_raw, "try-error") || !"STATE" %in% names(county_raw)) {
             county_raw <- suppressMessages(readr::read_csv(sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-alldata-%s.csv",
               vintage,
@@ -240,7 +240,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(county_raw, "try-error")) {
+          if (inherits(county_raw, "try-error") || !"STATE" %in% names(county_raw)) {
             county_raw <- suppressMessages(readr::read_csv(sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-alldata.csv",
               vintage,
@@ -350,7 +350,7 @@ get_estimates <- function(
           silent = TRUE
         ))
 
-        if (inherits(cbsa_raw, "try-error")) {
+        if (inherits(cbsa_raw, "try-error") || !"CBSA" %in% names(cbsa_raw)) {
           cbsa_raw <- suppressMessages(readr::read_csv(sprintf(
             "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/asrh/cbsa-est%s-alldata-char.csv",
             vintage,
@@ -451,7 +451,7 @@ get_estimates <- function(
           silent = TRUE
         ))
 
-        if (inherits(csa_raw, "try-error")) {
+        if (inherits(csa_raw, "try-error") || !"CSA" %in% names(csa_raw)) {
           csa_raw <- suppressMessages(readr::read_csv(sprintf(
             "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/asrh/csa-est%s-alldata-char.csv",
             vintage,
@@ -668,7 +668,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(raw, "try-error")) {
+          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
             raw <- suppressMessages(readr::read_csv(sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-alldata.csv",
               vintage,
@@ -687,7 +687,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(raw, "try-error")) {
+          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
             raw <- suppressMessages(readr::read_csv(sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
@@ -723,7 +723,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(raw, "try-error")) {
+          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
             raw <- suppressMessages(readr::read_csv(sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-alldata.csv",
               vintage,
@@ -744,7 +744,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(raw, "try-error")) {
+          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
             raw <- suppressMessages(readr::read_csv(sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
@@ -785,7 +785,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(raw, "try-error")) {
+          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
             raw <- suppressMessages(readr::read_csv(sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
@@ -822,7 +822,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(raw, "try-error")) {
+          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
             raw <- suppressMessages(readr::read_csv(sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-alldata.csv",
               vintage,
@@ -843,7 +843,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(raw, "try-error")) {
+          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
             raw <- suppressMessages(readr::read_csv(sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
@@ -879,7 +879,7 @@ get_estimates <- function(
           silent = TRUE
         ))
 
-        if (inherits(raw, "try-error")) {
+        if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
           raw <- suppressMessages(readr::read_csv(sprintf(
             "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/totals/co-est%s-alldata.csv",
             vintage,
@@ -931,7 +931,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(raw, "try-error")) {
+          if (inherits(raw, "try-error") || !"LSAD" %in% names(raw)) {
             raw <- suppressMessages(readr::read_csv(sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/totals/cbsa-est%s-alldata.csv",
               vintage,
@@ -956,7 +956,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(raw, "try-error")) {
+          if (inherits(raw, "try-error") || !"LSAD" %in% names(raw)) {
             raw <- suppressMessages(readr::read_csv(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-2022/metro/totals/cbsa-est2022.csv"
             ))
@@ -995,7 +995,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(raw, "try-error")) {
+          if (inherits(raw, "try-error") || !"LSAD" %in% names(raw)) {
             raw <- suppressMessages(readr::read_csv(sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/totals/csa-est%s-alldata.csv",
               vintage,
@@ -1014,7 +1014,7 @@ get_estimates <- function(
             silent = TRUE
           ))
 
-          if (inherits(raw, "try-error")) {
+          if (inherits(raw, "try-error") || !"LSAD" %in% names(raw)) {
             raw <- suppressMessages(readr::read_csv(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-2022/metro/totals/csa-est2022.csv"
             ))
@@ -1052,7 +1052,7 @@ get_estimates <- function(
           silent = TRUE
         ))
 
-        if (inherits(raw, "try-error")) {
+        if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
           raw <- suppressMessages(readr::read_csv(sprintf(
             "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/cities/totals/sub-est%s.csv",
             vintage,
@@ -1101,6 +1101,11 @@ get_estimates <- function(
       year_to_keep <- as.integer(year)
       base$GEOID <- as.character(base$GEOID)
 
+      # Use `variables = 'all'`
+      if (all(variables == "all")) {
+        variables <- unique(base$variable)
+      }
+
       # Explain available variables
       if (!all(variables %in% unique(base$variable))) {
         vars <- unique(base$variable)
@@ -1112,11 +1117,6 @@ get_estimates <- function(
           ),
           50
         ))
-      }
-
-      # Use `variables = 'all'`
-      if (all(variables == "all")) {
-        variables <- unique(base$variable)
       }
 
       # Get the requested variables and handle time series if so
@@ -1559,11 +1559,11 @@ get_estimates <- function(
         )
       }
     } else {
-      # Handle here until 2023 CB files are released
-      if (year == 2023) {
+      # Handle CB file availability
+      if (year == 2025) {
         geom <- try(suppressMessages(use_tigris(
           geography = geography,
-          year = 2022,
+          year = 2024,
           state = state,
           county = county,
           ...
