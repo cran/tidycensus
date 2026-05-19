@@ -16,6 +16,13 @@ For the latest updates, install from GitHub:
 remotes::install_github("walkerke/tidycensus")
 ```
 
-To learn more about the package, please visit the package documentation at https://walker-data.com/tidycensus/ or read the book _Analyzing US Census Data: Methods, Maps, and Models in R_ at https://walker-data.com/census-r/.  
+To learn more about the package, please visit the package documentation at https://walker-data.com/tidycensus/ or read the book _Analyzing US Census Data: Methods, Maps, and Models in R_ at https://walker-data.com/census-r/.
+
+A free Census API key is required to use tidycensus.  Obtain one at <https://api.census.gov/data/key_signup.html> and register it with:
+
+```r
+library(tidycensus)
+census_api_key("YOUR API KEY GOES HERE", install = TRUE)
+```
 
 Note: This product uses the Census Bureau Data API but is not endorsed or certified by the Census Bureau.

@@ -4,12 +4,15 @@
 \alias{get_pop_groups}
 \title{Get available population groups for a given Decennial Census year and summary file}
 \usage{
-get_pop_groups(year, sumfile)
+get_pop_groups(year, sumfile, key = NULL)
 }
 \arguments{
 \item{year}{The decennial Census year; one of 2000, 2010, or 2020.}
 
 \item{sumfile}{The summary file.  Available summary files are \code{"ddhca"}, \code{"sf2"}, and \code{"sf4"}.}
+
+\item{key}{Your Census API key. Defaults to \code{NULL}, which uses your
+\code{CENSUS_API_KEY} environment variable.}
 }
 \value{
 A tibble containing codes (to be used with the \code{pop_group} argument of \code{get_decennial()}) and descriptive names.

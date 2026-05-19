@@ -13,13 +13,22 @@ moe_sum <- function(moe, estimate = NULL, na.rm = FALSE) {
 
   if (!is.null(estimate)) {
     # ID those MOE values with 0 estimates
-    zeros <- estimate == 0
+    zeros <- !is.na(estimate) & estimate == 0
 
-    # Use the largest MOE among zero estimates (per Census guidance)
-    max_zero_moe <- max(moe[zeros], na.rm = TRUE)
+    if (any(zeros)) {
+      # Use the largest MOE among zero estimates (per Census guidance)
+      zero_moes <- moe[zeros]
+      max_zero_moe <- if (na.rm && all(is.na(zero_moes))) {
+        numeric(0)
+      } else {
+        max(zero_moes, na.rm = na.rm)
+      }
 
-    # Combine with the non-zeros
-    forcalc <- c(max_zero_moe, moe[!zeros])
+      # Combine with the non-zeros
+      forcalc <- c(max_zero_moe, moe[!zeros])
+    } else {
+      forcalc <- moe
+    }
 
   } else if (is.null(estimate)) {
     warning("You have not specified the estimates associated with the margins of error.  In the event that your calculation involves multiple zero estimates, this will unnaturally inflate the derived margin of error.", call. = FALSE)
@@ -108,8 +117,6 @@ moe_product <- function(est1, est2, moe1, moe2) {
   return(result)
 
 }
-
-
 
 
 

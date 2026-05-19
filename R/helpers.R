@@ -515,7 +515,7 @@ census_api_key <- function(key, overwrite = FALSE, install = FALSE){
 
 
 # Function to generate a vector of variables from an ACS table
-variables_from_table_acs <- function(table, year, survey, cache_table) {
+variables_from_table_acs <- function(table, year, survey, cache_table, key = NULL) {
 
   # Look to see if table exists in cache dir
   cache_dir <- user_cache_dir("tidycensus")
@@ -528,13 +528,13 @@ variables_from_table_acs <- function(table, year, survey, cache_table) {
 
   if (cache_table) {
     message(sprintf("Loading %s variables for %s from table %s and caching the dataset for faster future access.", toupper(survey), year, table))
-    df <- load_variables(year, survey, cache = TRUE)
+    df <- load_variables(year, survey, cache = TRUE, key = key)
   } else {
     if (file.exists(file.path(cache_dir, dset))) {
-      df <- load_variables(year, survey, cache = TRUE)
+      df <- load_variables(year, survey, cache = TRUE, key = key)
     } else {
       message(sprintf("Loading %s variables for %s from table %s. To cache this dataset for faster access to ACS tables in the future, run this function with `cache_table = TRUE`. You only need to do this once per ACS dataset.", toupper(survey), year, table))
-      df <- load_variables(year, survey, cache = FALSE)
+      df <- load_variables(year, survey, cache = FALSE, key = key)
     }
   }
 
@@ -554,7 +554,7 @@ variables_from_table_acs <- function(table, year, survey, cache_table) {
 
 
 # Function to generate a vector of variables from an Census table
-variables_from_table_decennial <- function(table, year, sumfile, cache_table) {
+variables_from_table_decennial <- function(table, year, sumfile, cache_table, key = NULL) {
 
   # Look to see if table exists in cache dir
   cache_dir <- user_cache_dir("tidycensus")
@@ -563,13 +563,13 @@ variables_from_table_decennial <- function(table, year, sumfile, cache_table) {
 
   if (cache_table) {
 
-    df <- load_variables(year, sumfile, cache = TRUE)
+    df <- load_variables(year, sumfile, cache = TRUE, key = key)
     names(df) <- tolower(names(df))
 
     # Check to see if we need to look in sf3 for 2000
     if (year == 2000) {
       if (!any(grepl(table, df$name))) {
-        df <- load_variables(year, dataset = "sf3", cache = TRUE)
+        df <- load_variables(year, dataset = "sf3", cache = TRUE, key = key)
         names(df) <- tolower(names(df))
       }
     }
@@ -579,26 +579,26 @@ variables_from_table_decennial <- function(table, year, sumfile, cache_table) {
 
   } else {
     if (file.exists(file.path(cache_dir, dset))) {
-      df <- load_variables(year, sumfile, cache = TRUE)
+      df <- load_variables(year, sumfile, cache = TRUE, key = key)
       names(df) <- tolower(names(df))
 
       # Check to see if we need to look in sf3 for 2000
       if (year == 2000) {
         if (!any(grepl(table, df$name))) {
-          df <- load_variables(year, dataset = "sf3", cache = TRUE)
+          df <- load_variables(year, dataset = "sf3", cache = TRUE, key = key)
           names(df) <- tolower(names(df))
         }
       }
 
     } else {
       message(sprintf("Loading %s variables for %s from table %s. To cache this dataset for faster access to Census tables in the future, run this function with `cache_table = TRUE`. You only need to do this once per Census dataset.", toupper(sumfile), year, table))
-      df <- load_variables(year, sumfile, cache = FALSE)
+      df <- load_variables(year, sumfile, cache = FALSE, key = key)
       names(df) <- tolower(names(df))
 
       # Check to see if we need to look in sf3 for 2000
       if (year == 2000) {
         if (!any(grepl(table, df$name))) {
-          df <- load_variables(year, dataset = "sf3", cache = TRUE)
+          df <- load_variables(year, dataset = "sf3", cache = TRUE, key = key)
           names(df) <- tolower(names(df))
         }
       }
@@ -607,7 +607,7 @@ variables_from_table_decennial <- function(table, year, sumfile, cache_table) {
 
   # Find all variables that match the table
 
-  if (year == 2020 && sumfile %in% c("pl", "dhc", "dp", "ddhca")) {
+  if (year == 2020 && sumfile %in% c("pl", "dhc", "dp", "ddhca", "ddhcb", "sdhc")) {
     vars <- df %>%
       filter(grepl(paste0(table, "_[0-9]+"), name)) %>%
       pull(name)
@@ -627,16 +627,14 @@ variables_from_table_decennial <- function(table, year, sumfile, cache_table) {
 get_census_api_key <- function(key) {
 
   # If a key is supplied, return it
-  if (!is.null(key)) {
+  if (!is.null(key) && length(key) == 1 && nzchar(key)) {
     return(key)
 
   } else if (Sys.getenv("CENSUS_API_KEY") == "") {
-    rlang::warn(message = c('*' = stringr::str_wrap("You have not set a Census API key. Users without a key are limited to 500 queries per day and may experience performance limitations."),
-                            'i' = stringr::str_wrap("For best results, get a Census API key at http://api.census.gov/data/key_signup.html and then supply the key to the `census_api_key()` function to use it throughout your tidycensus session.")),
-                .frequency = "once",
-                .frequency_id = "api_key_warning")
-
-    return(NULL)
+    rlang::abort(c(
+      "A Census API key is required for tidycensus requests.",
+      "i" = stringr::str_wrap("Get a Census API key at http://api.census.gov/data/key_signup.html, then pass it to a tidycensus function with the `key` argument or store it for future sessions with `census_api_key(\"YOUR KEY\", install = TRUE)`.")
+    ))
 
   } else {
 
@@ -675,5 +673,3 @@ summary_files <- function(year) {
 
   sumfiles
 }
-
-

@@ -683,7 +683,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     } else {
       survey2 <- survey
     }
-    variables <- variables_from_table_acs(table, year, survey2, cache_table)
+    variables <- variables_from_table_acs(table, year, survey2, cache_table, key = key)
   }
 
 

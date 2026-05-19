@@ -281,7 +281,7 @@ get_decennial <- function(geography,
 
   # Get data for an entire table if needed
   if (!is.null(table)) {
-    variables <- variables_from_table_decennial(table, year, sumfile, cache_table)
+    variables <- variables_from_table_decennial(table, year, sumfile, cache_table, key = key)
   }
 
   silent <- ifelse(year == 2010, FALSE, TRUE)
@@ -433,7 +433,7 @@ get_decennial <- function(geography,
       rlang::abort("This argument is only available when specifying a population group, which is only available for selected datasets.")
     }
 
-    labels = get_pop_groups(year = year, sumfile = sumfile)
+    labels = get_pop_groups(year = year, sumfile = sumfile, key = key)
     dat2 <- dat2 %>%
       dplyr::left_join(labels, by = "pop_group") %>%
       dplyr::select(GEOID, NAME, pop_group, pop_group_label,
@@ -442,10 +442,10 @@ get_decennial <- function(geography,
 
   # For ZCTAs, strip the state code from GEOID (issue #338 and #358)
   # Should only happen if the GEOID is 7 characters
-  if (geography == "zip code tabulation area (or part)" && year == 2020 && unique(nchar(dat2$GEOID)) == 7) {
+  if (stringr::str_detect(geography, "^zip code tabulation area") && unique(nchar(dat2$GEOID)) == 7) {
     dat2 <- dat2 %>%
       dplyr::mutate(
-        GEOID = stringr::str_sub(GEOID, start = 3L)
+        GEOID = stringr::str_sub(GEOID, start = -5L)
       )
   }
 
@@ -571,4 +571,3 @@ get_decennial <- function(geography,
   }
 
 }
-

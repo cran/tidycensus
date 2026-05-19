@@ -225,7 +225,7 @@ get_pums <- function(variables = NULL,
       var_names <- var_names[!var_names == "SPORDER"]
 
       if (recode) {
-        check_type <- pums_variables %>%
+        check_type <- tidycensus::pums_variables %>%
           dplyr::filter(var_code %in% var_names,
                         survey == survey,
                         year == year,
@@ -335,7 +335,7 @@ get_pums <- function(variables = NULL,
         var_names <- names(vacant_filter)
 
         if (recode) {
-          check_type <- pums_variables %>%
+          check_type <- tidycensus::pums_variables %>%
             dplyr::filter(var_code %in% var_names,
                           survey == survey,
                           year == year,

@@ -15,7 +15,8 @@ load_variables(
     "sldsprofile", "cqr", 
      "cd113", "cd113profile", "cd115", "cd115profile",
     "cd116", "plnat", "cd118"),
-  cache = FALSE
+  cache = FALSE,
+  key = NULL
 )
 }
 \arguments{
@@ -28,6 +29,9 @@ through 2021, with the exception of 2020.}
 
 \item{cache}{Whether you would like to cache the dataset for future access,
 or load the dataset from an existing cache. Defaults to FALSE.}
+
+\item{key}{Your Census API key. Defaults to \code{NULL}, which uses your
+\code{CENSUS_API_KEY} environment variable.}
 }
 \value{
 A tibble of variables from the requested dataset.

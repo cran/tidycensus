@@ -2,15 +2,29 @@
 #'
 #' @param year The decennial Census year; one of 2000, 2010, or 2020.
 #' @param sumfile The summary file.  Available summary files are \code{"ddhca"}, \code{"sf2"}, and \code{"sf4"}.
+#' @param key Your Census API key. Defaults to \code{NULL}, which uses your
+#'   \code{CENSUS_API_KEY} environment variable.
 #'
 #' @return A tibble containing codes (to be used with the \code{pop_group} argument of \code{get_decennial()}) and descriptive names.
 #' @export
-get_pop_groups <- function(year, sumfile) {
+get_pop_groups <- function(year, sumfile, key = NULL) {
+
+  key <- get_census_api_key(key)
 
   url <- sprintf("https://api.census.gov/data/%s/dec/%s/variables.json",
                  year, sumfile)
 
-  j <- jsonlite::fromJSON(url)
+  resp <- GET(url, query = list(key = key))
+
+  if (status_code(resp) == 404L) {
+    stop("API endpoint not found. Does this data set exist for the specified year? See https://api.census.gov/data.html for data availability.", call. = FALSE)
+  } else if (http_status(resp)$category != "Success") {
+    stop(paste("API request failed. Reason:", http_status(resp)$message), call. = FALSE)
+  }
+
+  j <- resp %>%
+    content(as = "text") %>%
+    jsonlite::fromJSON()
 
   item_data <- j$variables$POPGROUP$values$item
 

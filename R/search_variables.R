@@ -25,6 +25,8 @@
 #' @param dataset The dataset name as used on the Census website.  See the Details in this documentation for a full list of dataset names.
 #' @param cache Whether you would like to cache the dataset for future access,
 #'   or load the dataset from an existing cache. Defaults to FALSE.
+#' @param key Your Census API key. Defaults to \code{NULL}, which uses your
+#'   \code{CENSUS_API_KEY} environment variable.
 #'
 #' @return A tibble of variables from the requested dataset.
 #' @examples \dontrun{
@@ -48,7 +50,8 @@ load_variables <- function(
               "slds", "sldhprofile", "sldsprofile", "cqr",
               "cd113", "cd113profile", "cd115", "cd115profile", "cd116",
               "plnat", "cd118"),
-  cache = FALSE) {
+  cache = FALSE,
+  key = NULL) {
 
   if (length(year) != 1 || !grepl('[0-9]{4}', year)){
     stop("Argument \"year\" must be a single year in format YYYY.")
@@ -115,14 +118,16 @@ load_variables <- function(
     dataset <- paste0(dataset, "/", var_type)
   }
 
-  get_dataset <- function(d, year) {
+  get_dataset <- function(d, year, key) {
+
+    key <- get_census_api_key(key)
 
     set <- paste(year, d, sep = "/")
 
     url <- paste("https://api.census.gov/data",
                  set,
                  "variables.json", sep = "/")
-    resp <- httr::GET(url)
+    resp <- GET(url, query = list(key = key))
     if(httr::status_code(resp) == 404L){
       stop("API endpoint not found. Does this data set exist for the specified year? See https://api.census.gov/data.html for data availability.")
     }else if(httr::http_status(resp)$category != "Success"){
@@ -180,7 +185,7 @@ load_variables <- function(
         # For 5-year ACS without geography, refresh the table
         if (year > 2010 && dataset == "acs/acs5") {
           if (!"geography" %in% names(out)) {
-            df <- get_dataset(dataset, year)
+            df <- get_dataset(dataset, year, key = key)
             readr::write_rds(df, file_loc)
             return(df)
           }
@@ -191,14 +196,14 @@ load_variables <- function(
 
           # Check if an erroring variable is in the file
           if ("H00010001" %in% out$name) {
-            df <- get_dataset(dataset, year)
+            df <- get_dataset(dataset, year, key = key)
             write_rds(df, file_loc)
             return(df)
           }
 
           # Update the cached file if missing PCT vars
           if (!"PCT001001" %in% out$name) {
-            df <- get_dataset(dataset, year)
+            df <- get_dataset(dataset, year, key = key)
             write_rds(df, file_loc)
             return(df)
           }
@@ -213,12 +218,12 @@ load_variables <- function(
         return(out2)
 
       } else {
-        df <- get_dataset(dataset, year)
+        df <- get_dataset(dataset, year, key = key)
         write_rds(df, file_loc)
         return(df)
       }
     }
   } else {
-    get_dataset(dataset, year)
+    get_dataset(dataset, year, key = key)
   }
 }
