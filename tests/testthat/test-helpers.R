@@ -1,5 +1,7 @@
 test_that("variables_from_table_decennial matches underscore tables for 2020 special files", {
+  skip_on_cran()
   local_mocked_bindings(
+    group_variables = function(...) NULL,
     load_variables = function(year, dataset, cache, key = NULL) {
       data.frame(
         name = c("T03001_001N", "T03001_002N", "T03001001"),
@@ -10,17 +12,18 @@ test_that("variables_from_table_decennial matches underscore tables for 2020 spe
   )
 
   expect_equal(
-    variables_from_table_decennial("T03001", 2020, "ddhcb", TRUE),
+    variables_from_table_decennial("T03001", 2020, "ddhcb", FALSE),
     c("T03001_001N", "T03001_002N")
   )
 
   expect_equal(
-    variables_from_table_decennial("T03001", 2020, "sdhc", TRUE),
+    variables_from_table_decennial("T03001", 2020, "sdhc", FALSE),
     c("T03001_001N", "T03001_002N")
   )
 })
 
 test_that("get_decennial normalizes state-prefixed ZCTA GEOIDs", {
+  skip_on_cran()
   local_mocked_bindings(
     load_data_decennial = function(...) {
       data.frame(
@@ -43,4 +46,18 @@ test_that("get_decennial normalizes state-prefixed ZCTA GEOIDs", {
   )
 
   expect_equal(out$GEOID, c("82001", "82007"))
+})
+
+test_that("variables_from_table_acs drops comparison profile significance columns", {
+  skip_on_cran()
+  local_mocked_bindings(
+    group_variables = function(...) {
+      c("CP02_2023_001E", "CP02_2023_001EA", "CP02_2023_001PE", "CP02_2023_001PEA", "CP02_2023to2018_001SS")
+    }
+  )
+
+  vars <- variables_from_table_acs("CP02", 2023, "acs5/cprofile", FALSE, key = "test-key")
+
+  expect_equal(as.vector(vars), c("CP02_2023_001", "CP02_2023_001P"))
+  expect_equal(attr(vars, "census_group"), "CP02")
 })

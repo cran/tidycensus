@@ -45,80 +45,72 @@ test_that("metadata requests include the Census API key", {
   expect_match(captured[[2]]$url, "/2020/dec/ddhca/variables\\.json$")
 })
 
-test_that("load_variables can use a valid cache without an API key", {
+test_that("load_variables deprecates cache without writing to a cache directory", {
   skip_on_cran()
 
-  cache_dir <- tempfile("tidycensus-cache-")
-  dir.create(cache_dir)
-  readr::write_rds(
-    data.frame(
-      name = c("B01001_001", "B01001_002"),
-      label = c("Estimate!!Total", "Estimate!!Total!!Male"),
-      concept = c("Sex by Age", "Sex by Age"),
-      geography = c("block group", "block group")
-    ),
-    file.path(cache_dir, "acs5_2022.rds")
-  )
-
-  withr::local_envvar(CENSUS_API_KEY = NA)
+  captured <- list()
 
   local_mocked_bindings(
-    user_cache_dir = function(appname) cache_dir,
-    GET = function(...) {
-      stop("load_variables should not call the API when a valid cache exists", call. = FALSE)
+    GET = function(url, query = list(), ...) {
+      captured[[length(captured) + 1]] <<- list(url = url, query = query)
+      stop("captured GET", call. = FALSE)
     }
   )
 
-  vars <- load_variables(2022, "acs5", cache = TRUE)
-
-  expect_equal(vars$name, c("B01001_001", "B01001_002"))
+  expect_warning(
+    expect_error(load_variables(2022, "acs5", cache = TRUE, key = "metadata-key"), "captured GET"),
+    "`cache` is deprecated"
+  )
+  expect_equal(captured[[1]]$query$key, "metadata-key")
 })
 
-test_that("table expansion helpers pass direct keys to load_variables", {
+test_that("table expansion helpers pass direct keys to Census group metadata", {
   skip_on_cran()
 
   seen <- list()
 
   local_mocked_bindings(
-    load_variables = function(year, dataset, cache, key = NULL) {
+    GET = function(url, query = list(), ...) {
       seen[[length(seen) + 1]] <<- list(
-        year = year,
-        dataset = dataset,
-        cache = cache,
-        key = key
+        url = url,
+        query = query
       )
-
-      data.frame(
-        name = c("B01001_001", "B01001_002", "P001001", "P001002"),
-        label = NA_character_,
-        concept = NA_character_
-      )
-    }
+      structure(list(status_code = 200L, text = if (grepl("B01001", url)) {
+        '{"variables":{"B01001_001E":{},"B01001_001EA":{},"B01001_001M":{},"B01001_002E":{},"B01001_002M":{},"GEO_ID":{},"NAME":{}}}'
+      } else {
+        '{"variables":{"P1_001N":{},"P1_001NA":{},"P1_002N":{},"GEO_ID":{},"NAME":{}}}'
+      }), class = "response")
+    },
+    status_code = function(x) x$status_code,
+    http_status = function(x) list(category = "Success", message = "OK"),
+    content = function(x, as = NULL, ...) x$text
   )
 
   expect_equal(
-    tidycensus:::variables_from_table_acs(
+    as.vector(tidycensus:::variables_from_table_acs(
       "B01001",
       2022,
       "acs5",
       cache_table = FALSE,
       key = "table-key"
-    ),
+    )),
     c("B01001_001", "B01001_002")
   )
-  expect_equal(seen[[1]]$key, "table-key")
+  expect_equal(seen[[1]]$query$key, "table-key")
+  expect_match(seen[[1]]$url, "/groups/B01001\\.json$")
 
   expect_equal(
-    tidycensus:::variables_from_table_decennial(
-      "P001",
-      2010,
-      "sf1",
+    as.vector(tidycensus:::variables_from_table_decennial(
+      "P1",
+      2020,
+      "pl",
       cache_table = FALSE,
       key = "table-key"
-    ),
-    c("P001001", "P001002")
+    )),
+    c("P1_001N", "P1_002N")
   )
-  expect_equal(seen[[2]]$key, "table-key")
+  expect_equal(seen[[2]]$query$key, "table-key")
+  expect_match(seen[[2]]$url, "/groups/P1\\.json$")
 })
 
 test_that("public table calls thread direct keys into table expansion", {
@@ -127,9 +119,13 @@ test_that("public table calls thread direct keys into table expansion", {
   local_mocked_bindings(
     variables_from_table_acs = function(table, year, survey, cache_table, key = NULL) {
       expect_equal(key, "public-key")
-      "B01001_001"
+      vars <- "B01001_001"
+      attr(vars, "census_group") <- table
+      vars
     },
     load_data_acs = function(...) {
+      args <- list(...)
+      expect_equal(args$group, "B01001")
       data.frame(
         GEOID = "48",
         NAME = "Texas",
@@ -155,9 +151,13 @@ test_that("public table calls thread direct keys into table expansion", {
   local_mocked_bindings(
     variables_from_table_decennial = function(table, year, sumfile, cache_table, key = NULL) {
       expect_equal(key, "public-key")
-      "P1_001N"
+      vars <- "P1_001N"
+      attr(vars, "census_group") <- table
+      vars
     },
     load_data_decennial = function(...) {
+      args <- list(...)
+      expect_equal(args$group, "P1")
       data.frame(
         GEOID = "48",
         NAME = "Texas",
@@ -442,5 +442,47 @@ test_that("low-level Census API data requests include the API key", {
     "captured GET"
   )
 
+  expect_true(all(vapply(captured, function(x) identical(x$query$key, "data-key"), logical(1))))
+})
+
+test_that("low-level table data requests use Census API groups", {
+  skip_on_cran()
+
+  captured <- list()
+
+  local_mocked_bindings(
+    GET = function(url, query = list(), ...) {
+      captured[[length(captured) + 1]] <<- list(url = url, query = query)
+      stop("captured GET", call. = FALSE)
+    }
+  )
+
+  expect_error(
+    tidycensus:::load_data_acs(
+      geography = "state",
+      formatted_variables = "B01001_001E,B01001_001M",
+      key = "data-key",
+      year = 2022,
+      survey = "acs5",
+      group = "B01001"
+    ),
+    "captured GET"
+  )
+
+  expect_error(
+    tidycensus:::load_data_decennial(
+      geography = "state",
+      variables = "P1_001N",
+      key = "data-key",
+      year = 2020,
+      sumfile = "pl",
+      pop_group = NULL,
+      group = "P1"
+    ),
+    "captured GET"
+  )
+
+  expect_equal(captured[[1]]$query$get, "group(B01001)")
+  expect_equal(captured[[2]]$query$get, "group(P1)")
   expect_true(all(vapply(captured, function(x) identical(x$query$key, "data-key"), logical(1))))
 })

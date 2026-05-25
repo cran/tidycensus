@@ -4,7 +4,7 @@ validate_call <- function(content, geography, year, dataset) {
 
   # Invalid API key
   if (grepl("Invalid Key", content)) {
-    stop("You have entered an invalid Census API key. Check your API key string and try again. If you need an API key, you can get one at http://api.census.gov/data/key_signup.html.",
+    stop("You have entered an invalid Census API key. Check your API key string and try again. If you need an API key, you can get one at https://api.census.gov/data/key_signup.html.",
          call. = FALSE)
   } else if (grepl("error: unknown variable", content)) {
     stop(sprintf('One or more of your requested variables is invalid. Use `load_variables(%s, "%s")` to make sure that you entered the variable IDs correctly.', year, dataset), call. = FALSE)

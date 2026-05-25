@@ -27,8 +27,8 @@ through 2021, with the exception of 2020.}
 
 \item{dataset}{The dataset name as used on the Census website.  See the Details in this documentation for a full list of dataset names.}
 
-\item{cache}{Whether you would like to cache the dataset for future access,
-or load the dataset from an existing cache. Defaults to FALSE.}
+\item{cache}{Deprecated and ignored. Variable metadata is now loaded from
+the Census API without writing to a local cache.}
 
 \item{key}{Your Census API key. Defaults to \code{NULL}, which uses your
 \code{CENSUS_API_KEY} environment variable.}
@@ -58,7 +58,7 @@ Datasets available are as follows: "sf1", "sf2", "sf3", "sf4", "pl", "dhc", "dp"
 }
 \examples{
 \dontrun{
-v15 <- load_variables(2015, "acs5", cache = TRUE)
+v15 <- load_variables(2015, "acs5")
 View(v15)
 }
 }

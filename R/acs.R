@@ -5,13 +5,10 @@
 #'   IDs. tidycensus automatically returns the estimate and the margin of error
 #'   associated with the variable.
 #' @param table   The ACS table for which you would like to request all
-#'   variables. Uses lookup tables to identify the variables; performs faster
-#'   when variable table already exists through \code{load_variables(cache =
-#'   TRUE)}. Only one table may be requested per call.
-#' @param cache_table Whether or not to cache table names for faster future
-#'   access. Defaults to FALSE; if TRUE, only needs to be called once per
-#'   dataset.  If variables dataset is already cached via the
-#'   \code{load_variables} function, this can be bypassed.
+#'   variables. Uses Census API groups where supported. Only one table may be
+#'   requested per call.
+#' @param cache_table Deprecated and ignored. Table requests now use Census API
+#'   groups and do not write to a local cache.
 #' @param year The year, or endyear, of the ACS sample. 5-year ACS data is
 #'   available from 2009 through 2023; 1-year ACS data is available from 2005
 #'   through 2023, with the exception of 2020.  Defaults to 2023.
@@ -686,9 +683,10 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     variables <- variables_from_table_acs(table, year, survey2, cache_table, key = key)
   }
 
+  table_group <- attr(variables, "census_group")
 
   # Allow for as many variables in a call as desired
-  if (length(variables) > 24) {
+  if (length(variables) > 24 && is.null(table_group)) {
     l <- split(variables, ceiling(seq_along(variables) / 24))
 
     dat <- map(l, function(x) {
@@ -701,7 +699,8 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     vars <- format_variables_acs(variables)
 
     dat <- suppressWarnings(load_data_acs(geography, vars, key, year, state, county,
-                                          zcta, survey, show_call = show_call))
+                                          zcta, survey, show_call = show_call,
+                                          group = table_group))
   }
 
   vars2 <- format_variables_acs(variables)

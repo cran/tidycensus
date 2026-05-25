@@ -132,28 +132,36 @@ format_variables_acs <- function(variables) {
 }
 
 load_data_acs <- function(geography, formatted_variables, key, year, state = NULL,
-                          county = NULL, zcta = NULL, survey, show_call = FALSE) {
+                          county = NULL, zcta = NULL, survey, show_call = FALSE,
+                          group = NULL) {
 
   base <- paste("https://api.census.gov/data",
                   as.character(year), "acs",
                   survey, sep = "/")
 
-  if (grepl("^DP", formatted_variables)) {
+  endpoint_variables <- if (is.null(group)) formatted_variables else group
+
+  if (grepl("^DP", endpoint_variables)) {
     message("Using the ACS Data Profile")
     base <- paste0(base, "/profile")
   }
 
-  if (grepl("^S[0-9].", formatted_variables)) {
+  if (grepl("^S[0-9].", endpoint_variables)) {
     message("Using the ACS Subject Tables")
     base <- paste0(base, "/subject")
   }
 
-  if (grepl("^CP[0-9].", formatted_variables)) {
+  if (grepl("^CP[0-9].", endpoint_variables)) {
     message("Using the ACS Comparison Profile")
     base <- paste0(base, "/cprofile")
   }
 
   for_area <- paste0(geography, ":*")
+  vars_to_get <- if (is.null(group)) {
+    paste0(formatted_variables, ",NAME")
+  } else {
+    paste0("group(", group, ")")
+  }
 
   if (!is.null(zcta))  {
 
@@ -178,8 +186,6 @@ load_data_acs <- function(geography, formatted_variables, key, year, state = NUL
     }
 
     for_area <- paste0(zcta, collapse = ",")
-
-    vars_to_get <- paste0(formatted_variables, ",NAME")
 
     call <- GET(base, query = list(get = vars_to_get,
                                    "for" = paste0(geography, ":", for_area),
@@ -233,8 +239,6 @@ load_data_acs <- function(geography, formatted_variables, key, year, state = NUL
 
     }
 
-    vars_to_get <- paste0(formatted_variables, ",NAME")
-
     if (geography == "state" && !is.null(state)) {
 
       call <- GET(base, query = list(get = vars_to_get,
@@ -250,8 +254,6 @@ load_data_acs <- function(geography, formatted_variables, key, year, state = NUL
 
 
   } else {
-
-    vars_to_get <- paste0(formatted_variables, ",NAME")
 
     call <- GET(base, query = list(get = vars_to_get,
                                    "for" = paste0(geography, ":*"),
@@ -293,13 +295,20 @@ load_data_acs <- function(geography, formatted_variables, key, year, state = NUL
 
   dat <- fromJSON(content)
 
-  colnames(dat) <- dat[1,]
+  headers <- dat[1,]
+  dat <- dat[, !duplicated(headers), drop = FALSE]
+  colnames(dat) <- headers[!duplicated(headers)]
 
   dat <- as_tibble(dat)
 
   dat <- dat[-1,]
 
   var_vector <- unlist(strsplit(formatted_variables, split = ","))
+
+  if (!is.null(group)) {
+    extra_group_vars <- names(dat)[grepl(paste0("^", group), names(dat)) & !names(dat) %in% var_vector]
+    dat <- dat[, !(names(dat) %in% c("GEO_ID", extra_group_vars) | grepl("A$", names(dat))), drop = FALSE]
+  }
 
   dat[var_vector] <- lapply(dat[var_vector], as.numeric)
 
@@ -320,15 +329,20 @@ load_data_acs <- function(geography, formatted_variables, key, year, state = NUL
 
 
 load_data_decennial <- function(geography, variables, key, year, sumfile, pop_group,
-                                state = NULL, county = NULL, show_call = FALSE) {
+                                state = NULL, county = NULL, show_call = FALSE,
+                                group = NULL) {
 
 
-  var <- paste0(variables, collapse = ",")
+  if (is.null(group)) {
+    var <- paste0(variables, collapse = ",")
 
-  if (year == 1990) {
-    vars_to_get <- paste0(var, ",ANPSADPI")
+    if (year == 1990) {
+      vars_to_get <- paste0(var, ",ANPSADPI")
+    } else {
+      vars_to_get <- paste0(var, ",NAME")
+    }
   } else {
-    vars_to_get <- paste0(var, ",NAME")
+    vars_to_get <- paste0("group(", group, ")")
   }
 
   if (!is.null(pop_group)) {
@@ -496,17 +510,24 @@ load_data_decennial <- function(geography, variables, key, year, sumfile, pop_gr
 
   dat <- fromJSON(content)
 
-  colnames(dat) <- dat[1,]
+  headers <- dat[1,]
+  dat <- dat[, !duplicated(headers), drop = FALSE]
+  colnames(dat) <- headers[!duplicated(headers)]
 
   dat <- as_tibble(dat)
 
   dat <- dat[-1,]
 
+  vnum <- variables[variables != "POPGROUP"]
+
+  if (!is.null(group)) {
+    extra_group_vars <- names(dat)[grepl(paste0("^", group), names(dat)) & !names(dat) %in% vnum]
+    dat <- dat[, !(names(dat) %in% c("GEO_ID", "POPGROUP_LABEL", extra_group_vars) | grepl("A$", names(dat))), drop = FALSE]
+  }
+
   if (year == 1990) {
     dat <- rename(dat, NAME = ANPSADPI)
   }
-
-  vnum <- variables[variables != "POPGROUP"]
 
   dat[vnum] <- lapply(dat[vnum], as.numeric)
 

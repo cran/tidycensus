@@ -33,14 +33,11 @@ IDs. tidycensus automatically returns the estimate and the margin of error
 associated with the variable.}
 
 \item{table}{The ACS table for which you would like to request all
-variables. Uses lookup tables to identify the variables; performs faster
-when variable table already exists through \code{load_variables(cache =
-TRUE)}. Only one table may be requested per call.}
+variables. Uses Census API groups where supported. Only one table may be
+requested per call.}
 
-\item{cache_table}{Whether or not to cache table names for faster future
-access. Defaults to FALSE; if TRUE, only needs to be called once per
-dataset.  If variables dataset is already cached via the
-\code{load_variables} function, this can be bypassed.}
+\item{cache_table}{Deprecated and ignored. Table requests now use Census API
+groups and do not write to a local cache.}
 
 \item{year}{The year, or endyear, of the ACS sample. 5-year ACS data is
 available from 2009 through 2023; 1-year ACS data is available from 2005

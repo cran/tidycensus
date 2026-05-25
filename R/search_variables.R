@@ -23,14 +23,14 @@
 #'   available from 2009 through 2020. 1-year ACS data is available from 2005
 #'   through 2021, with the exception of 2020.
 #' @param dataset The dataset name as used on the Census website.  See the Details in this documentation for a full list of dataset names.
-#' @param cache Whether you would like to cache the dataset for future access,
-#'   or load the dataset from an existing cache. Defaults to FALSE.
+#' @param cache Deprecated and ignored. Variable metadata is now loaded from
+#'   the Census API without writing to a local cache.
 #' @param key Your Census API key. Defaults to \code{NULL}, which uses your
 #'   \code{CENSUS_API_KEY} environment variable.
 #'
 #' @return A tibble of variables from the requested dataset.
 #' @examples \dontrun{
-#' v15 <- load_variables(2015, "acs5", cache = TRUE)
+#' v15 <- load_variables(2015, "acs5")
 #' View(v15)
 #' }
 #' @export
@@ -81,12 +81,6 @@ load_variables <- function(
 
   if (str_detect(dataset, "acs3") && (year < 2007 || year > 2013)) {
       stop("3-year ACS support in tidycensus begins with the 2005-2007 3-year ACS and ends with the 2011-2013 3-year ACS. For newer data, use the 1-year or 5-year ACS.", call. = FALSE)
-  }
-
-  rds <- paste0(dataset, "_", year, ".rds")
-
-  if (grepl("^acs[135]/(profile|subject|cprofile)$", dataset)) {
-    rds <- gsub("/", "_", rds)
   }
 
   var_type <- NULL
@@ -170,60 +164,12 @@ load_variables <- function(
     return(as_tibble(out2))
   }
 
-  if (cache) {
-    cache_dir <- user_cache_dir("tidycensus")
-    if (!file.exists(cache_dir)) {
-      dir.create(cache_dir, recursive = TRUE)
-    }
-
-    if (file.exists(cache_dir)) {
-      file_loc <- file.path(cache_dir, rds)
-      if (file.exists(file_loc)) {
-
-        out <- read_rds(file_loc)
-
-        # For 5-year ACS without geography, refresh the table
-        if (year > 2010 && dataset == "acs/acs5") {
-          if (!"geography" %in% names(out)) {
-            df <- get_dataset(dataset, year, key = key)
-            readr::write_rds(df, file_loc)
-            return(df)
-          }
-        }
-
-        # For 2010 decennial Census, must get again if old
-        if (year == 2010 && dataset == "dec/sf1") {
-
-          # Check if an erroring variable is in the file
-          if ("H00010001" %in% out$name) {
-            df <- get_dataset(dataset, year, key = key)
-            write_rds(df, file_loc)
-            return(df)
-          }
-
-          # Update the cached file if missing PCT vars
-          if (!"PCT001001" %in% out$name) {
-            df <- get_dataset(dataset, year, key = key)
-            write_rds(df, file_loc)
-            return(df)
-          }
-        }
-
-        out1 <- out[grepl("^B[0-9]|^C[0-9]|^DP[0-9]|^S[0-9]|^P.*[0-9]|^H.*[0-9]|^K[0-9]|^CP[0-9]",
-                          out$name), ]
-
-        out1$name <- str_replace(out1$name, "E$|M$", "")
-
-        out2 <- out1[!grepl("Margin Of Error|Margin of Error", out1$label), ]
-        return(out2)
-
-      } else {
-        df <- get_dataset(dataset, year, key = key)
-        write_rds(df, file_loc)
-        return(df)
-      }
-    }
-  } else {
-    get_dataset(dataset, year, key = key)
+  if (isTRUE(cache)) {
+    warning(
+      "`cache` is deprecated and ignored. tidycensus no longer writes variable metadata to a local cache.",
+      call. = FALSE
+    )
   }
+
+  get_dataset(dataset, year, key = key)
 }

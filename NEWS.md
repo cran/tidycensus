@@ -1,6 +1,7 @@
 # tidycensus 1.8
 
 * **Breaking change:** the Census Bureau now requires an API key for all requests, including metadata endpoints used by `load_variables()` and `get_pop_groups()`.  Tidycensus will now error (rather than warn) when no key is available.  Pass a key with the `key` argument or store one for future sessions with `census_api_key("YOUR KEY", install = TRUE)`.  `load_variables()` and `get_pop_groups()` gain a `key` argument, and table lookups triggered by the `table =` argument to `get_acs()` / `get_decennial()` now forward the resolved key automatically.
+* `get_estimates()` now supports the 2025 city / place population estimates with `geography = "place"` and `vintage = 2025`.
 * `get_decennial()` now normalizes state-prefixed ZCTA GEOIDs returned by selected decennial API endpoints before joining to geometry.
 * `get_pums(return_vacant = TRUE)` now qualifies internal PUMS metadata lookups so the function works correctly when called with `tidycensus::get_pums()`.
 

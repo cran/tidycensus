@@ -7,7 +7,7 @@
 census_api_key(key, overwrite = FALSE, install = FALSE)
 }
 \arguments{
-\item{key}{The API key provided to you from the Census formated in quotes. A key can be acquired at \url{http://api.census.gov/data/key_signup.html}}
+\item{key}{The API key provided to you from the Census formated in quotes. A key can be acquired at \url{https://api.census.gov/data/key_signup.html}}
 
 \item{overwrite}{If this is set to TRUE, it will overwrite an existing CENSUS_API_KEY that you already have in your \code{.Renviron} file.}
 

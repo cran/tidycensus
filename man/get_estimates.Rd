@@ -35,7 +35,10 @@ be used an alias for \code{"metropolitan statistical area/micropolitan statistic
 \item{product}{The data product (optional). \code{"population"}, \code{"components"}
                \code{"housing"}, and \code{"characteristics"} are supported.
 
-               For 2020 and later, the only supported product is \code{"characteristics"}.}
+               For 2020 and later, available products vary by geography.
+               \code{"population"} is supported for total population
+               estimates, and \code{"characteristics"} is supported for
+               selected geographies.}
 
 \item{variables}{A character string or vector of character strings of requested variables.  For years 2020 and later, use \code{variables = "all"} to request all available variables.}
 

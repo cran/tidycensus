@@ -3,14 +3,11 @@
 #' @param geography The geography of your data.
 #' @param variables Character string or vector of character strings of variable
 #'                  IDs.
-#' @param table   The Census table for which you would like to request all variables. Uses
-#'                lookup tables to identify the variables; performs faster when variable
-#'                table already exists through \code{load_variables(cache = TRUE)}.
-#'                Only one table may be requested per call.
-#' @param cache_table Whether or not to cache table names for faster future access.
-#'                    Defaults to FALSE; if TRUE, only needs to be called once per
-#'                    dataset.  If variables dataset is already cached via the
-#'                    \code{load_variables} function, this can be bypassed.
+#' @param table   The Census table for which you would like to request all variables.
+#'                Uses Census API groups where supported. Only one table may be
+#'                requested per call.
+#' @param cache_table Deprecated and ignored. Table requests now use Census API
+#'                    groups when supported and do not write to a local cache.
 #' @param year The year for which you are requesting data. Defaults to 2020; 2000,
 #'             2010, and 2020 are available.
 #' @param sumfile The Census summary file; if \code{NULL}, defaults to \code{"pl"} when the year is 2020 and \code{"sf1"} for 2000 and 2010.  Not all summary files are available for each decennial Census year.  Make sure you are using the correct summary file for your requested variables, as variable IDs may be repeated across summary files and represent different topics.
@@ -284,9 +281,11 @@ get_decennial <- function(geography,
     variables <- variables_from_table_decennial(table, year, sumfile, cache_table, key = key)
   }
 
+  table_group <- attr(variables, "census_group")
+
   silent <- ifelse(year == 2010, FALSE, TRUE)
 
-  if (length(variables) > 48) {
+  if (length(variables) > 48 && is.null(table_group)) {
     l <- split(variables, ceiling(seq_along(variables) / 48))
 
     if (!is.null(pop_group)) {
@@ -327,7 +326,8 @@ get_decennial <- function(geography,
     }) %>%
       reduce(left_join, by = join_vars)
   } else {
-    dat <- try(load_data_decennial(geography, variables, key, year, sumfile, pop_group, state, county, show_call = show_call),
+    dat <- try(load_data_decennial(geography, variables, key, year, sumfile, pop_group, state, county, show_call = show_call,
+                                   group = table_group),
                silent = silent)
 
     # If sf1 fails, try to get it from sf3

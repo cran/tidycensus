@@ -1,3 +1,16 @@
+read_estimates_csv <- function(https_url, ftp_url, required_col) {
+  raw <- suppressWarnings(try(
+    suppressMessages(readr::read_csv(https_url)),
+    silent = TRUE
+  ))
+
+  if (inherits(raw, "try-error") || !required_col %in% names(raw)) {
+    raw <- suppressMessages(readr::read_csv(ftp_url))
+  }
+
+  raw
+}
+
 #' Get data from the US Census Bureau Population Estimates Program
 #'
 #' The \code{get_estimates()} function requests data from the US Census Bureau's Population Estimates Program (PEP) datasets.  The PEP datasets are defined by the US Census Bureau as follows: "The Census Bureau's Population Estimates Program (PEP) produces estimates of the population for the United States, its states, counties, cities, and towns, as well as for the Commonwealth of Puerto Rico and its municipios. Demographic components of population change (births, deaths, and migration) are produced at the national, state, and county levels of geography. Additionally, housing unit estimates are produced for the nation, states, and counties.  PEP annually utilizes current data on births, deaths, and migration to calculate population change since the most recent decennial census and produce a time series of estimates of population, demographic components of change, and housing units. The annual time series of estimates begins with the most recent decennial census data and extends to the vintage year. As each vintage of estimates includes all years since the most recent decennial census, the latest vintage of data available supersedes all previously-produced estimates for those dates."
@@ -12,7 +25,10 @@
 #' @param product The data product (optional). \code{"population"}, \code{"components"}
 #'                \code{"housing"}, and \code{"characteristics"} are supported.
 #'
-#'                For 2020 and later, the only supported product is \code{"characteristics"}.
+#'                For 2020 and later, available products vary by geography.
+#'                \code{"population"} is supported for total population
+#'                estimates, and \code{"characteristics"} is supported for
+#'                selected geographies.
 #' @param variables A character string or vector of character strings of requested variables.  For years 2020 and later, use \code{variables = "all"} to request all available variables.
 #' @param breakdown The population breakdown used when \code{product = "characteristics"}.
 #'                  Acceptable values are \code{"AGEGROUP"}, \code{"RACE"}, \code{"SEX"}, and
@@ -646,7 +662,11 @@ get_estimates <- function(
     ) {
       if (!is.null(product)) {
         if (product == "population") {
-          variables <- population_estimates_variables22
+          variables <- if (geography == "place") {
+            "POPESTIMATE"
+          } else {
+            population_estimates_variables22
+          }
         } else if (product == "components") {
           if (year == 2021) {
             variables <- components_estimates_variables21
@@ -1043,22 +1063,19 @@ get_estimates <- function(
         #   rlang::abort("The most recent PEP release for this geography is 2022.")
         # }
 
-        raw <- suppressWarnings(try(
-          suppressMessages(readr::read_csv(sprintf(
+        raw <- read_estimates_csv(
+          sprintf(
             "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/cities/totals/sub-est%s.csv",
             vintage,
             vintage
-          ))),
-          silent = TRUE
-        ))
-
-        if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
-          raw <- suppressMessages(readr::read_csv(sprintf(
+          ),
+          sprintf(
             "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/cities/totals/sub-est%s.csv",
             vintage,
             vintage
-          )))
-        }
+          ),
+          "SUMLEV"
+        )
 
         raw <- raw %>%
           dplyr::filter(SUMLEV == "162") %>%

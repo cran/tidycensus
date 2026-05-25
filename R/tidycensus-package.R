@@ -11,8 +11,7 @@
 #' @import tigris
 #' @import stringr
 #' @import rvest
-#' @import rappdirs
-#' @importFrom readr read_rds write_rds parse_factor read_csv
+#' @importFrom readr parse_factor read_csv
 #' @importFrom xml2 read_html
 #' @import units
 #' @importFrom utils packageVersion installed.packages

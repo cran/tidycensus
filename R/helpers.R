@@ -449,7 +449,7 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
 #' used in package functions by simply typing CENSUS_API_KEY If you do not have an \code{.Renviron} file, the function will create on for you.
 #' If you already have an \code{.Renviron} file, the function will append the key to your existing file, while making a backup of your
 #' original file for disaster recovery purposes.
-#' @param key The API key provided to you from the Census formated in quotes. A key can be acquired at \url{http://api.census.gov/data/key_signup.html}
+#' @param key The API key provided to you from the Census formated in quotes. A key can be acquired at \url{https://api.census.gov/data/key_signup.html}
 #' @param install if TRUE, will install the key in your \code{.Renviron} file for use in future sessions.  Defaults to FALSE.
 #' @param overwrite If this is set to TRUE, it will overwrite an existing CENSUS_API_KEY that you already have in your \code{.Renviron} file.
 #' @importFrom utils write.table read.table
@@ -513,99 +513,48 @@ census_api_key <- function(key, overwrite = FALSE, install = FALSE){
 
 }
 
-
-# Function to generate a vector of variables from an ACS table
-variables_from_table_acs <- function(table, year, survey, cache_table, key = NULL) {
-
-  # Look to see if table exists in cache dir
-  cache_dir <- user_cache_dir("tidycensus")
-
-  dset <- paste0(survey, "_", year, ".rds")
-
-  dset <- gsub("/", "_", dset)
-
-
-
-  if (cache_table) {
-    message(sprintf("Loading %s variables for %s from table %s and caching the dataset for faster future access.", toupper(survey), year, table))
-    df <- load_variables(year, survey, cache = TRUE, key = key)
-  } else {
-    if (file.exists(file.path(cache_dir, dset))) {
-      df <- load_variables(year, survey, cache = TRUE, key = key)
-    } else {
-      message(sprintf("Loading %s variables for %s from table %s. To cache this dataset for faster access to ACS tables in the future, run this function with `cache_table = TRUE`. You only need to do this once per ACS dataset.", toupper(survey), year, table))
-      df <- load_variables(year, survey, cache = FALSE, key = key)
-    }
+warn_cache_table_deprecated <- function(cache_table) {
+  if (isTRUE(cache_table)) {
+    warning(
+      "`cache_table` is deprecated and ignored. tidycensus now uses Census API groups for table requests.",
+      call. = FALSE
+    )
   }
-
-  # For backwards compatibility
-  names(df) <- tolower(names(df))
-
-  specific <- paste0(table, "_")
-
-  # Find all variables that match the table
-  sub <- df[grepl(specific, df$name), ]
-
-  vars <- sub$name
-
-  return(vars)
-
 }
 
+group_variables <- function(base, table, key) {
+  key <- get_census_api_key(key)
 
-# Function to generate a vector of variables from an Census table
-variables_from_table_decennial <- function(table, year, sumfile, cache_table, key = NULL) {
+  resp <- GET(
+    paste0(base, "/groups/", table, ".json"),
+    query = list(key = key)
+  )
 
-  # Look to see if table exists in cache dir
-  cache_dir <- user_cache_dir("tidycensus")
-
-  dset <- paste0(sumfile, "_", year, ".rds")
-
-  if (cache_table) {
-
-    df <- load_variables(year, sumfile, cache = TRUE, key = key)
-    names(df) <- tolower(names(df))
-
-    # Check to see if we need to look in sf3 for 2000
-    if (year == 2000) {
-      if (!any(grepl(table, df$name))) {
-        df <- load_variables(year, dataset = "sf3", cache = TRUE, key = key)
-        names(df) <- tolower(names(df))
-      }
-    }
-
-
-    message(sprintf("Loading %s variables for %s from table %s and caching the dataset for faster future access.", toupper(sumfile), year, table))
-
-  } else {
-    if (file.exists(file.path(cache_dir, dset))) {
-      df <- load_variables(year, sumfile, cache = TRUE, key = key)
-      names(df) <- tolower(names(df))
-
-      # Check to see if we need to look in sf3 for 2000
-      if (year == 2000) {
-        if (!any(grepl(table, df$name))) {
-          df <- load_variables(year, dataset = "sf3", cache = TRUE, key = key)
-          names(df) <- tolower(names(df))
-        }
-      }
-
-    } else {
-      message(sprintf("Loading %s variables for %s from table %s. To cache this dataset for faster access to Census tables in the future, run this function with `cache_table = TRUE`. You only need to do this once per Census dataset.", toupper(sumfile), year, table))
-      df <- load_variables(year, sumfile, cache = FALSE, key = key)
-      names(df) <- tolower(names(df))
-
-      # Check to see if we need to look in sf3 for 2000
-      if (year == 2000) {
-        if (!any(grepl(table, df$name))) {
-          df <- load_variables(year, dataset = "sf3", cache = TRUE, key = key)
-          names(df) <- tolower(names(df))
-        }
-      }
-    }
+  if (status_code(resp) == 404L) {
+    return(NULL)
   }
 
-  # Find all variables that match the table
+  if (http_status(resp)$category != "Success") {
+    stop(paste("API request failed. Reason:", http_status(resp)$message), call. = FALSE)
+  }
+
+  dat <- content(resp, as = "text") %>%
+    fromJSON(simplifyVector = FALSE)
+
+  names(dat$variables)
+}
+
+fallback_table_variables_decennial <- function(table, year, sumfile, key) {
+  df <- load_variables(year, sumfile, cache = FALSE, key = key)
+  names(df) <- tolower(names(df))
+
+  # Check to see if we need to look in sf3 for 2000
+  if (year == 2000) {
+    if (!any(grepl(table, df$name))) {
+      df <- load_variables(year, dataset = "sf3", cache = FALSE, key = key)
+      names(df) <- tolower(names(df))
+    }
+  }
 
   if (year == 2020 && sumfile %in% c("pl", "dhc", "dp", "ddhca", "ddhcb", "sdhc")) {
     vars <- df %>%
@@ -617,9 +566,58 @@ variables_from_table_decennial <- function(table, year, sumfile, cache_table, ke
       pull(name)
   }
 
+  vars
+}
 
-  return(vars)
+# Function to generate a vector of variables from an ACS table
+variables_from_table_acs <- function(table, year, survey, cache_table, key = NULL) {
+  warn_cache_table_deprecated(cache_table)
 
+  base <- paste("https://api.census.gov/data",
+                as.character(year), "acs",
+                survey, sep = "/")
+
+  vars <- group_variables(base, table, key)
+
+  if (is.null(vars)) {
+    df <- load_variables(year, survey, cache = FALSE, key = key)
+    names(df) <- tolower(names(df))
+    vars <- df$name[grepl(paste0(table, "_"), df$name)]
+    return(vars)
+  }
+
+  vars <- vars[!vars %in% c("GEO_ID", "NAME")]
+  vars <- vars[!grepl("A$", vars)]
+  vars <- vars[!grepl("SS$", vars)]
+  vars <- unique(str_replace(vars, "E$|M$", ""))
+  vars <- sort(vars)
+  attr(vars, "census_group") <- table
+
+  vars
+}
+
+
+# Function to generate a vector of variables from a Census table
+variables_from_table_decennial <- function(table, year, sumfile, cache_table, key = NULL) {
+  warn_cache_table_deprecated(cache_table)
+
+  base <- paste0("https://api.census.gov/data/",
+                 year,
+                 "/dec/",
+                 sumfile)
+
+  vars <- group_variables(base, table, key)
+
+  if (is.null(vars)) {
+    return(fallback_table_variables_decennial(table, year, sumfile, key))
+  }
+
+  vars <- vars[!vars %in% c("GEO_ID", "NAME", "POPGROUP", "POPGROUP_LABEL")]
+  vars <- vars[!grepl("A$", vars)]
+  vars <- sort(vars)
+  attr(vars, "census_group") <- table
+
+  vars
 }
 
 
@@ -633,7 +631,7 @@ get_census_api_key <- function(key) {
   } else if (Sys.getenv("CENSUS_API_KEY") == "") {
     rlang::abort(c(
       "A Census API key is required for tidycensus requests.",
-      "i" = stringr::str_wrap("Get a Census API key at http://api.census.gov/data/key_signup.html, then pass it to a tidycensus function with the `key` argument or store it for future sessions with `census_api_key(\"YOUR KEY\", install = TRUE)`.")
+      "i" = stringr::str_wrap("Get a Census API key at https://api.census.gov/data/key_signup.html, then pass it to a tidycensus function with the `key` argument or store it for future sessions with `census_api_key(\"YOUR KEY\", install = TRUE)`.")
     ))
 
   } else {
