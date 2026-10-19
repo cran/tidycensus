@@ -4,31 +4,28 @@
 #'
 #' \code{load_variables()} returns three columns by default: \code{name}, which is the Census ID code to be supplied to the \code{variables} parameter in \code{get_decennial()} or \code{get_acs()}; \code{label}, which is a detailed description of the variable; and \code{concept}, which provides information about the table that a given variable belongs to.  For 5-year ACS detailed tables datasets, a fourth column, \code{geography}, tells you the smallest geography at which a given variable is available.
 #'
-#' Datasets available are as follows: "sf1", "sf2", "sf3", "sf4", "pl", "dhc", "dp",
-#' "dhca", "ddhca", "ddhcb", "sdhc", "as", "gu", "mp", "vi", "acsse",
-#' "dpas", "dpgu", "dpmp", "dpvi",
-#' "dhcvi", "dhcgu", "dhcvi", "dhcas",
-#' "acs1", "acs3", "acs5", "acs1/profile",
-#' "acs3/profile", "acs5/profile", "acs1/subject", "acs3/subject",
-#' "acs5/subject", "acs1/cprofile", "acs5/cprofile",
-#' "sf2profile", "sf3profile",
-#' "sf4profile", "aian", "aianprofile",
-#' "cd110h", "cd110s", "cd110hprofile", "cd110sprofile", "sldh",
-#' "slds", "sldhprofile", "sldsprofile", "cqr",
-#' "cd113", "cd113profile", "cd115", "cd115profile", "cd116", "cd118", and
-#' "plnat".
+#' Datasets are named as they are in the Census API; see \url{https://api.census.gov/data.html} for a description of each dataset by year.
+#'
+#' For the American Community Survey, use \code{"acs1"}, \code{"acs3"}, or \code{"acs5"} for the Detailed Tables. Add \code{"/profile"} for the Data Profile (e.g. \code{"acs5/profile"}), \code{"/subject"} for the Subject Tables, or \code{"/cprofile"} for the Comparison Profile (\code{"acs1/cprofile"} and \code{"acs5/cprofile"}). \code{"acsse"} is the ACS 1-year Supplemental Estimates.
+#'
+#' For the decennial Census, use the name of a summary file, as supplied to the \code{sumfile} argument of \code{get_decennial()}. Run \code{summary_files(year)} to see the summary files available for 2000, 2010, or 2020. Common examples are \code{"pl"} (Redistricting Data), \code{"dhc"} (Demographic and Housing Characteristics, 2020), \code{"dp"} (Demographic Profile, 2020), and \code{"sf1"} (Summary File 1, 2000 and 2010).
 #'
 #' @param year The year for which you are requesting variables. Either the year
-#'   or endyear of the decennial Census or ACS sample. 5-year ACS data is
-#'   available from 2009 through 2020. 1-year ACS data is available from 2005
-#'   through 2021, with the exception of 2020.
+#'   of the decennial Census or the year / endyear of the ACS sample. 5-year ACS
+#'   data are available from 2009, and 1-year ACS data from 2005, with the
+#'   exception of 2020.
 #' @param dataset The dataset name as used on the Census website.  See the Details in this documentation for a full list of dataset names.
 #' @param cache Deprecated and ignored. Variable metadata is now loaded from
 #'   the Census API without writing to a local cache.
 #' @param key Your Census API key. Defaults to \code{NULL}, which uses your
 #'   \code{CENSUS_API_KEY} environment variable.
+#' @param clean_labels If \code{TRUE}, cleans the \code{label} column, e.g.
+#'   "Estimate!!Total:!!Male:!!Under 5 years" becomes "Total > Male > Under 5 years".
+#'   Defaults to \code{FALSE}.
 #'
-#' @return A tibble of variables from the requested dataset.
+#' @return A tibble of variables from the requested dataset. For datasets where the
+#'   Census API publishes it (ACS detailed tables and the 2020 decennial files), a
+#'   \code{universe} column gives the universe of each variable's table.
 #' @examples \dontrun{
 #' v15 <- load_variables(2015, "acs5")
 #' View(v15)
@@ -51,7 +48,8 @@ load_variables <- function(
               "cd113", "cd113profile", "cd115", "cd115profile", "cd116",
               "plnat", "cd118"),
   cache = FALSE,
-  key = NULL) {
+  key = NULL,
+  clean_labels = FALSE) {
 
   if (length(year) != 1 || !grepl('[0-9]{4}', year)){
     stop("Argument \"year\" must be a single year in format YYYY.")
@@ -121,14 +119,17 @@ load_variables <- function(
     url <- paste("https://api.census.gov/data",
                  set,
                  "variables.json", sep = "/")
-    resp <- GET(url, query = list(key = key))
-    if(httr::status_code(resp) == 404L){
+    resp <- census_api_get(url, list(key = key))
+    if(httr2::resp_status(resp) == 404L){
       stop("API endpoint not found. Does this data set exist for the specified year? See https://api.census.gov/data.html for data availability.")
-    }else if(httr::http_status(resp)$category != "Success"){
-      stop(paste("API request failed. Reason:", httr::http_status(resp)$message))
+    }else if(httr2::resp_status(resp) %/% 100 != 2){
+      stop(paste("API request failed. Reason:", http_status_message(resp)))
+    }
+    if (is_invalid_key_page(resp)) {
+      stop_invalid_key()
     }
     dat <- resp %>%
-      httr::content(as = "text") %>%
+      resp_text() %>%
       jsonlite::fromJSON() %>%
       purrr::modify_depth(2, function(x) {
         x$validValues <- NULL
@@ -161,6 +162,17 @@ load_variables <- function(
         dplyr::select(-year, -table)
     }
 
+    # Add the universe of each table where the Census API publishes it (ACS
+    # detailed tables and the 2020 decennial files, #596)
+    universes <- table_universes(paste("https://api.census.gov/data", set, "groups.json", sep = "/"), key)
+
+    if (!is.null(universes)) {
+      out2 <- out2 %>%
+        dplyr::mutate(table = stringr::str_remove(name, "_.*")) %>%
+        dplyr::left_join(universes, by = "table") %>%
+        dplyr::select(-table)
+    }
+
     return(as_tibble(out2))
   }
 
@@ -171,5 +183,33 @@ load_variables <- function(
     )
   }
 
-  get_dataset(dataset, year, key = key)
+  out <- get_dataset(dataset, year, key = key)
+
+  if (isTRUE(clean_labels)) {
+    out$label <- clean_variable_label(out$label)
+  }
+
+  out
+}
+
+# The universe of each table in a dataset, from the API's groups.json; NULL if
+# the dataset doesn't publish universes (e.g. Data Profile and Subject tables,
+# decennial files before 2020) or the request fails
+table_universes <- function(url, key) {
+  resp <- tryCatch(census_api_get(url, list(key = key)), error = function(e) NULL)
+
+  if (is.null(resp) || httr2::resp_status(resp) != 200 || is_invalid_key_page(resp)) {
+    return(NULL)
+  }
+
+  groups <- tryCatch(jsonlite::fromJSON(resp_text(resp))$groups, error = function(e) NULL)
+
+  # The API names the field "universe " (with a trailing space)
+  universe_col <- names(groups)[trimws(names(groups)) == "universe"]
+
+  if (!is.data.frame(groups) || length(universe_col) != 1) {
+    return(NULL)
+  }
+
+  dplyr::tibble(table = groups$name, universe = trimws(groups[[universe_col]]))
 }

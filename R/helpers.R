@@ -162,8 +162,9 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
     # No ZCTA geometry for 2011, so use 2010 instead
     if (year == 2011) year <- 2010
 
-    # Similarly, we don't have cb ZCTAs for 2021 yet, so use 2020 instead
-    if (year == 2021 && cb) {
+    # Cartographic boundary ZCTA files are only published for decennial years
+    # (ZCTAs are redrawn with each Census), so use 2020 for later years
+    if (year > 2020 && cb) {
       year <- 2020
     }
 
@@ -206,7 +207,23 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
 
   } else if (geography == "place") {
 
+    # There are no cartographic boundary places for 2000
+    if (year == 2000) cb <- FALSE
+
     pl <- places(state = state, year = year, cb = cb, class = "sf", ...)
+
+    # 2000 and 2010 files name their ID columns differently
+    if ("GEO_ID" %in% names(pl)) {
+      pl$GEOID <- paste0(pl$STATE, pl$PLACE)
+    }
+
+    if ("GEOID10" %in% names(pl)) {
+      pl$GEOID <- pl$GEOID10
+    }
+
+    if ("PLCIDFP00" %in% names(pl)) {
+      pl$GEOID <- pl$PLCIDFP00
+    }
 
     return(pl)
 
@@ -223,7 +240,23 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
 
   } else if (geography == "congressional district") {
 
+    # The 2012 ACS uses the 113th Congress, whose districts first appear in
+    # the 2013 files (the 2012 files have the 112th)
+    if (year == 2012) year <- 2013
+
+    # There are no cartographic boundary congressional districts before 2013
+    if (year < 2013) cb <- FALSE
+
     cd <- congressional_districts(cb = cb, year = year, class = "sf", ...)
+
+    if ("GEOID10" %in% names(cd)) {
+      cd$GEOID <- cd$GEOID10
+    }
+
+    # The 2011 files include the Congress number in GEOID (e.g. 4811201)
+    if (year == 2011) {
+      cd$GEOID <- paste0(cd$STATEFP, cd$CD112FP)
+    }
 
     return(cd)
 
@@ -282,6 +315,14 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
     slu <- state_legislative_districts(state = state, house = "upper", cb = cb, year = year,
                                        class = "sf", ...)
 
+    if ("GEO_ID" %in% names(slu)) {
+      slu$GEOID <- paste0(slu$STATE, slu$SLDU)
+    }
+
+    if ("GEOID10" %in% names(slu)) {
+      slu$GEOID <- slu$GEOID10
+    }
+
     return(slu)
 
   } else if (geography == "state legislative district (lower chamber)") {
@@ -289,7 +330,27 @@ use_tigris <- function(geography, year, cb = TRUE, resolution = "500k",
     slc <- state_legislative_districts(state = state, house = "lower", cb = cb, year = year,
                                        class = "sf", ...)
 
+    if ("GEO_ID" %in% names(slc)) {
+      slc$GEOID <- paste0(slc$STATE, slc$SLDL)
+    }
+
+    if ("GEOID10" %in% names(slc)) {
+      slc$GEOID <- slc$GEOID10
+    }
+
     return(slc)
+
+  } else if (geography == "metropolitan division") {
+
+    md <- metro_divisions(year = year, class = "sf", ...)
+
+    return(md)
+
+  } else if (geography == "tribal census tract") {
+
+    tt <- tribal_census_tracts(cb = cb, year = year, class = "sf", ...)
+
+    return(tt)
 
   } else if (geography == c("american indian area/alaska native area/hawaiian home land")) {
 
@@ -525,20 +586,24 @@ warn_cache_table_deprecated <- function(cache_table) {
 group_variables <- function(base, table, key) {
   key <- get_census_api_key(key)
 
-  resp <- GET(
+  resp <- census_api_get(
     paste0(base, "/groups/", table, ".json"),
-    query = list(key = key)
+    list(key = key)
   )
 
-  if (status_code(resp) == 404L) {
+  if (httr2::resp_status(resp) == 404L) {
     return(NULL)
   }
 
-  if (http_status(resp)$category != "Success") {
-    stop(paste("API request failed. Reason:", http_status(resp)$message), call. = FALSE)
+  if (httr2::resp_status(resp) %/% 100 != 2) {
+    stop(paste("API request failed. Reason:", http_status_message(resp)), call. = FALSE)
   }
 
-  dat <- content(resp, as = "text") %>%
+  if (is_invalid_key_page(resp)) {
+    stop_invalid_key()
+  }
+
+  dat <- resp_text(resp) %>%
     fromJSON(simplifyVector = FALSE)
 
   names(dat$variables)
@@ -664,7 +729,7 @@ summary_files <- function(year) {
   } else if (year == 2020) {
     sumfiles <- c("pl", "dhc", "dp", "pes", "dpas", "ddhca",
                   "dpmp", "dpgu", "dpvi", "ddhcb", "sdhc",
-                  "dhcvi", "dhcgu", "dhcvi", "dhcas", "cd118")
+                  "dhcvi", "dhcgu", "dhcas", "cd118")
   } else {
     stop("Invalid year for `get_decennial()`; valid years are 2000, 2010, and 2020.", call. = FALSE)
   }

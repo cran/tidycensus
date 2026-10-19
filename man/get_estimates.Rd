@@ -13,7 +13,7 @@ get_estimates(
   variables = NULL,
   breakdown = NULL,
   breakdown_labels = FALSE,
-  vintage = 2024,
+  vintage = 2025,
   year = vintage,
   state = NULL,
   county = NULL,
@@ -24,6 +24,8 @@ get_estimates(
   shift_geo = FALSE,
   key = NULL,
   show_call = FALSE,
+  drop_empty = FALSE,
+  cb = TRUE,
   ...
 )
 }
@@ -34,11 +36,15 @@ be used an alias for \code{"metropolitan statistical area/micropolitan statistic
 
 \item{product}{The data product (optional). \code{"population"}, \code{"components"}
                \code{"housing"}, and \code{"characteristics"} are supported.
+               \code{"intercensal"} returns intercensal estimates; see Details.
 
                For 2020 and later, available products vary by geography.
                \code{"population"} is supported for total population
                estimates, and \code{"characteristics"} is supported for
-               selected geographies.}
+               selected geographies. \code{"housing"} returns housing unit
+               estimates (\code{"HUEST"}) for the US, regions, states, and
+               counties for Vintage 2021 and later; these are read from the
+               Census Bureau's Excel tables and require the readxl package.}
 
 \item{variables}{A character string or vector of character strings of requested variables.  For years 2020 and later, use \code{variables = "all"} to request all available variables.}
 
@@ -52,7 +58,8 @@ combinations of these breakdowns.  For years 2020 and later, \code{"AGE"} is als
 \code{product = "characteristics"}. Defaults to FALSE.}
 
 \item{vintage}{It is recommended to use the most recent vintage
-available for a given decennial series (so, year = 2019 for the 2010s, and year = 2025 for the 2020s).}
+available for a given decennial series (so, year = 2019 for the 2010s, and year = 2025 for the 2020s).
+For intercensal estimates, use the end year of the series (2010 or 2020).}
 
 \item{year}{The data year (defaults to the vintage requested). Use \code{time_series = TRUE} to access time-series estimates.}
 
@@ -80,7 +87,9 @@ if TRUE, uses the tigris package to return an sf tibble
 with simple feature geometry in the `geometry` column.}
 
 \item{keep_geo_vars}{if TRUE, keeps all the variables from the Census
-shapefile obtained by tigris.  Defaults to FALSE.}
+shapefile obtained by tigris.  Defaults to FALSE.  As the shapefile has its own \code{NAME} column, the
+shapefile's name is returned as \code{NAME.x} and the Census name for each geography
+(the \code{NAME} column when \code{keep_geo_vars = FALSE}) as \code{NAME.y}.}
 
 \item{shift_geo}{(deprecated) if TRUE, returns geometry with Alaska and Hawaii shifted for thematic
 mapping of the entire US.  As of May 2021, we recommend using \code{tigris::shift_geometry()}
@@ -95,6 +104,18 @@ in debugging and determining if error messages returned are
 due to tidycensus or the Census API. Copy to the API call into
 a browser and see what is returned by the API directly. Defaults to FALSE.}
 
+\item{drop_empty}{if TRUE and \code{geometry = TRUE}, drops rows with empty geometries.
+These are typically water-only areas, such as offshore block groups,
+that are not in the cartographic boundary files used by default; use
+\code{cb = FALSE} to return TIGER/Line geometries for these areas instead.
+Defaults to FALSE.}
+
+\item{cb}{if TRUE (the default), uses the Census Bureau's cartographic boundary files
+for feature geometry when \code{geometry = TRUE}. These are generalized and clipped to
+the shoreline. If FALSE, uses the more detailed TIGER/Line files, which include water
+area. Note that tigris functions default to \code{cb = FALSE}. TIGER/Line files are
+always used for 2011 and 2012, when cartographic boundary files are not available.}
+
 \item{...}{other keyword arguments}
 }
 \value{
@@ -105,6 +126,10 @@ The \code{get_estimates()} function requests data from the US Census Bureau's Po
 }
 \details{
 \code{get_estimates()} requests data from the Population Estimates API for years 2019 and earlier; however the Population Estimates are no longer supported on the API as of 2020.  For recent years, \code{get_estimates()} reads a flat file from the Census website and parses it.  This means that arguments and output for 2020 and later datasets may differ slightly from datasets acquired for 2019 and earlier.
+
+Puerto Rico municipio estimates (Vintage 2025 and later) are returned for \code{geography = "county"} when \code{state = "PR"} is specified, for both \code{product = "population"} and \code{product = "characteristics"}.  The Census Bureau publishes Puerto Rico characteristics by age and sex only, so the \code{"RACE"} and \code{"HISP"} breakdowns are not available.  Puerto Rico metropolitan and micropolitan areas are included in \code{"cbsa"} and \code{"combined statistical area"} population estimates for Vintage 2025 and later.
+
+Intercensal estimates, which revise the estimates between two decennial Censuses to be consistent with both, are available with \code{product = "intercensal"}.  Use \code{vintage = 2020} for the 2010-2020 intercensal estimates and \code{vintage = 2010} for 2000-2010.  Population totals (\code{ESTIMATESBASE}, \code{POPESTIMATE}, and the decennial Census count \code{CENSUSPOP}) are available for states, counties, and places; supply a \code{breakdown} to get county characteristics by age, sex, race, and Hispanic origin.  If \code{year} is not specified, the full intercensal series is returned.
 
 As of April 2022, variables available for 2020 and later datasets are as follows: ESTIMATESBASE, POPESTIMATE, NPOPCHG, BIRTHS, DEATHS, NATURALCHG, INTERNATIONALMIG, DOMESTICMIG, NETMIG, RESIDUAL, GQESTIMATESBASE, GQESTIMATES, RBIRTH, RDEATH, RNATURALCHG, RINTERNATIONALMIG, RDOMESTICMIG, and RNETMIG.
 }

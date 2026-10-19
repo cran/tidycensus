@@ -1,14 +1,251 @@
-read_estimates_csv <- function(https_url, ftp_url, required_col) {
-  raw <- suppressWarnings(try(
-    suppressMessages(readr::read_csv(https_url)),
-    silent = TRUE
-  ))
-
-  if (inherits(raw, "try-error") || !required_col %in% names(raw)) {
-    raw <- suppressMessages(readr::read_csv(ftp_url))
+# Housing unit estimates for 2020 and later are published only as Excel tables
+# (no CSV), with place names but no FIPS codes. Returns the same long format as
+# the other PEP files: GEOID, NAME, variable ("HUEST"), year, value
+read_housing_estimates <- function(geography, vintage) {
+  if (vintage < 2021) {
+    rlang::abort(
+      "Housing unit estimates for 2020 and later are available in tidycensus for Vintage 2021 and later."
+    )
   }
 
-  raw
+  if (!geography %in% c("us", "region", "state", "county")) {
+    rlang::abort(
+      "Housing unit estimates for 2020 and later are available for the US, regions, states, and counties."
+    )
+  }
+
+  rlang::check_installed(
+    "readxl",
+    reason = "to read housing unit estimates for 2020 and later."
+  )
+
+  table <- if (geography == "county") "CO-EST%s-HU.xlsx" else "NST-EST%s-HU.xlsx"
+
+  tmp <- tempfile(fileext = ".xlsx")
+  on.exit(unlink(tmp), add = TRUE)
+
+  census_download(
+    sprintf(
+      paste0("https://www2.census.gov/programs-surveys/popest/tables/2020-%s/housing/totals/", table),
+      vintage,
+      vintage
+    ),
+    tmp
+  )
+
+  raw <- readxl::read_excel(tmp, col_names = FALSE, .name_repair = "minimal")
+
+  # Get county codes from the same vintage's population file, which uses the
+  # same names
+  counties <- NULL
+
+  if (geography == "county") {
+    counties <- census_read_csv(
+      sprintf(
+        "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/totals/co-est%s-alldata.csv",
+        vintage,
+        vintage
+      ),
+      sprintf(
+        "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/totals/co-est%s-alldata.csv",
+        vintage,
+        vintage
+      ),
+      "SUMLEV"
+    ) %>%
+      dplyr::filter(SUMLEV == "050")
+  }
+
+  parse_housing_table(raw, geography, counties)
+}
+
+# Parse a housing unit estimates table (as read by readxl with no column names)
+# and attach GEOIDs; `counties` is the vintage's county population file
+parse_housing_table <- function(raw, geography, counties = NULL) {
+  # The row of years (2020, 2021, ...) ends the header. Column 2 is the April 1,
+  # 2020 estimates base; the July 1 estimates for each year follow it
+  header <- which(raw[[3]] == "2020")[1]
+  years <- unlist(raw[header, -(1:2)])
+
+  # Geography rows have a name and values; footnotes have only text
+  after <- seq_len(nrow(raw)) > header
+  has_values <- rowSums(!is.na(raw[-1])) > 0
+  hu <- raw[after & !is.na(raw[[1]]) & has_values, -2]
+  names(hu) <- c("NAME", paste0("HUEST", years))
+
+  values <- suppressWarnings(lapply(hu[-1], as.numeric))
+  malformed <- Reduce(`|`, lapply(values, is.na))
+
+  if (any(malformed)) {
+    rlang::abort(c(
+      "Some rows in the Census Bureau's housing unit estimates table are missing values.",
+      "i" = paste(hu$NAME[malformed], collapse = "; ")
+    ))
+  }
+
+  hu[-1] <- values
+
+  # Areas are indented with leading dots
+  hu$NAME <- sub("^\\.+", "", hu$NAME)
+
+  regions <- c(
+    "Northeast Region" = "1",
+    "Midwest Region" = "2",
+    "South Region" = "3",
+    "West Region" = "4"
+  )
+
+  if (geography == "us") {
+    hu <- hu[hu$NAME == "United States", ]
+    hu$GEOID <- rep("1", nrow(hu))
+  } else if (geography == "region") {
+    hu <- hu[hu$NAME %in% names(regions), ]
+    hu$GEOID <- unname(regions[hu$NAME])
+  } else if (geography == "state") {
+    hu <- hu[!hu$NAME %in% c("United States", names(regions)), ]
+    states <- unique(tidycensus::fips_codes[c("state_code", "state_name")])
+    hu$GEOID <- states$state_code[match(hu$NAME, states$state_name)]
+  } else {
+    hu <- hu[hu$NAME != "United States", ]
+
+    county_codes <- paste0(counties$STATE, counties$COUNTY)
+    county_names <- fix_pep_encoding(counties$CTYNAME)
+    hu_county <- sub(", [^,]+$", "", hu$NAME)
+    hu_state <- sub("^.*, ", "", hu$NAME)
+
+    # Match on county and state names; a name that matches more than one county
+    # is left unmatched. Some files truncate long names (e.g. "Lower
+    # Connecticut River Valley Planning Regio" in Vintage 2022), so fall back to
+    # a single county in the state whose name starts the table's name
+    hu$GEOID <- vapply(seq_len(nrow(hu)), function(i) {
+      in_state <- counties$STNAME == hu_state[i]
+      exact <- which(in_state & county_names == hu_county[i])
+      if (length(exact) == 0) {
+        exact <- which(in_state & startsWith(hu_county[i], county_names))
+      }
+      if (length(unique(county_codes[exact])) == 1) county_codes[exact[1]] else NA_character_
+    }, character(1))
+  }
+
+  if (anyNA(hu$GEOID)) {
+    rlang::abort(c(
+      "Unable to match some areas in the Census Bureau's housing unit estimates table to a single GEOID.",
+      "i" = paste(hu$NAME[is.na(hu$GEOID)], collapse = "; ")
+    ))
+  }
+
+  hu %>%
+    dplyr::select(GEOID, NAME, dplyr::everything()) %>%
+    tidyr::pivot_longer(
+      -c(GEOID, NAME),
+      names_to = c("variable", "year"),
+      names_pattern = "(\\D+)(\\d+)",
+      values_to = "value"
+    )
+}
+
+# Puerto Rico municipios aren't in the county files; Census publishes them
+# separately by single year of age and sex (Vintage 2025 and later)
+read_pr_municipios <- function(vintage) {
+  if (vintage < 2025) {
+    rlang::abort(
+      "Puerto Rico municipio estimates are available in tidycensus for Vintage 2025 and later."
+    )
+  }
+
+  census_read_csv(
+    sprintf(
+      "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-syasex-72.csv",
+      vintage,
+      vintage
+    ),
+    sprintf(
+      "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-syasex-72.csv",
+      vintage,
+      vintage
+    ),
+    "STATE"
+  )
+}
+
+# Most PEP flat files are Latin-1 encoded (e.g. "Do\u00f1a Ana County"), but some
+# (like the Puerto Rico files) are UTF-8; convert only the invalid strings
+fix_pep_encoding <- function(x) {
+  bad <- !validUTF8(x)
+  x[bad] <- iconv(x[bad], from = "latin1", to = "UTF-8")
+  x
+}
+
+# Reshape a PEP county characteristics ("alldata") file to one row per county,
+# year code, age group, sex, Hispanic origin, and race
+parse_pep_county_char <- function(raw) {
+  total_vals <- c(
+    "TOT",
+    "WA",
+    "BA",
+    "IA",
+    "AA",
+    "NA",
+    "TOM",
+    "WAC",
+    "BAC",
+    "IAC",
+    "AAC",
+    "NAC"
+  )
+
+  raw %>%
+    tidyr::pivot_longer(
+      TOT_POP:dplyr::last_col(),
+      names_to = c("category", "SEX"),
+      values_to = "value",
+      names_sep = "_"
+    ) %>%
+    dplyr::mutate(
+      category = ifelse(
+        category %in% total_vals,
+        paste0("BH", category),
+        category
+      ),
+      category = stringr::str_replace(category, "H", "H_")
+    ) %>%
+    tidyr::separate_wider_delim(
+      category,
+      delim = "_",
+      names = c("HISP", "RACE")
+    ) %>%
+    dplyr::filter(SEX != "POP") %>%
+    dplyr::mutate(RACE = ifelse(RACE == "", "TOT", RACE)) %>%
+    dplyr::mutate(
+      HISP = dplyr::case_when(
+        HISP == "BH" ~ 0L,
+        HISP == "H" ~ 2L,
+        HISP == "NH" ~ 1L
+      ),
+      RACE = dplyr::case_when(
+        RACE == "TOT" ~ 0L,
+        RACE == "WA" ~ 1L,
+        RACE == "BA" ~ 2L,
+        RACE == "IA" ~ 3L,
+        RACE == "AA" ~ 4L,
+        RACE == "NA" ~ 5L,
+        RACE == "TOM" ~ 6L,
+        RACE == "WAC" ~ 7L,
+        RACE == "BAC" ~ 8L,
+        RACE == "IAC" ~ 9L,
+        RACE == "AAC" ~ 10L,
+        RACE == "NAC" ~ 11L,
+      ),
+      SEX = dplyr::case_when(
+        SEX == "MALE" ~ 1L,
+        SEX == "FEMALE" ~ 2L
+      ),
+      GEOID = paste0(STATE, COUNTY),
+      NAME = paste0(CTYNAME, ", ", STNAME)
+    ) %>%
+    dplyr::rename(AGEGROUP = AGEGRP) %>%
+    dplyr::select(GEOID, NAME, YEAR:value) %>%
+    dplyr::rename(year = YEAR)
 }
 
 #' Get data from the US Census Bureau Population Estimates Program
@@ -17,6 +254,10 @@ read_estimates_csv <- function(https_url, ftp_url, required_col) {
 #'
 #' \code{get_estimates()} requests data from the Population Estimates API for years 2019 and earlier; however the Population Estimates are no longer supported on the API as of 2020.  For recent years, \code{get_estimates()} reads a flat file from the Census website and parses it.  This means that arguments and output for 2020 and later datasets may differ slightly from datasets acquired for 2019 and earlier.
 #'
+#' Puerto Rico municipio estimates (Vintage 2025 and later) are returned for \code{geography = "county"} when \code{state = "PR"} is specified, for both \code{product = "population"} and \code{product = "characteristics"}.  The Census Bureau publishes Puerto Rico characteristics by age and sex only, so the \code{"RACE"} and \code{"HISP"} breakdowns are not available.  Puerto Rico metropolitan and micropolitan areas are included in \code{"cbsa"} and \code{"combined statistical area"} population estimates for Vintage 2025 and later.
+#'
+#' Intercensal estimates, which revise the estimates between two decennial Censuses to be consistent with both, are available with \code{product = "intercensal"}.  Use \code{vintage = 2020} for the 2010-2020 intercensal estimates and \code{vintage = 2010} for 2000-2010.  Population totals (\code{ESTIMATESBASE}, \code{POPESTIMATE}, and the decennial Census count \code{CENSUSPOP}) are available for states, counties, and places; supply a \code{breakdown} to get county characteristics by age, sex, race, and Hispanic origin.  If \code{year} is not specified, the full intercensal series is returned.
+#'
 #' As of April 2022, variables available for 2020 and later datasets are as follows: ESTIMATESBASE, POPESTIMATE, NPOPCHG, BIRTHS, DEATHS, NATURALCHG, INTERNATIONALMIG, DOMESTICMIG, NETMIG, RESIDUAL, GQESTIMATESBASE, GQESTIMATES, RBIRTH, RDEATH, RNATURALCHG, RINTERNATIONALMIG, RDOMESTICMIG, and RNETMIG.
 #'
 #' @param geography The geography of your data. Available geographies for the most recent data vintage are listed
@@ -24,11 +265,15 @@ read_estimates_csv <- function(https_url, ftp_url, required_col) {
 #'                  be used an alias for \code{"metropolitan statistical area/micropolitan statistical area"}.
 #' @param product The data product (optional). \code{"population"}, \code{"components"}
 #'                \code{"housing"}, and \code{"characteristics"} are supported.
+#'                \code{"intercensal"} returns intercensal estimates; see Details.
 #'
 #'                For 2020 and later, available products vary by geography.
 #'                \code{"population"} is supported for total population
 #'                estimates, and \code{"characteristics"} is supported for
-#'                selected geographies.
+#'                selected geographies. \code{"housing"} returns housing unit
+#'                estimates (\code{"HUEST"}) for the US, regions, states, and
+#'                counties for Vintage 2021 and later; these are read from the
+#'                Census Bureau's Excel tables and require the readxl package.
 #' @param variables A character string or vector of character strings of requested variables.  For years 2020 and later, use \code{variables = "all"} to request all available variables.
 #' @param breakdown The population breakdown used when \code{product = "characteristics"}.
 #'                  Acceptable values are \code{"AGEGROUP"}, \code{"RACE"}, \code{"SEX"}, and
@@ -40,6 +285,7 @@ read_estimates_csv <- function(https_url, ftp_url, required_col) {
 #'                         \code{product = "characteristics"}. Defaults to FALSE.
 #' @param vintage It is recommended to use the most recent vintage
 #'             available for a given decennial series (so, year = 2019 for the 2010s, and year = 2025 for the 2020s).
+#'             For intercensal estimates, use the end year of the series (2010 or 2020).
 #' @param year The data year (defaults to the vintage requested). Use \code{time_series = TRUE} to access time-series estimates.
 #' @param state The state for which you are requesting data. State
 #'              names, postal codes, and FIPS codes are accepted.
@@ -60,7 +306,9 @@ read_estimates_csv <- function(https_url, ftp_url, required_col) {
 #'                 if TRUE, uses the tigris package to return an sf tibble
 #'                 with simple feature geometry in the `geometry` column.
 #' @param keep_geo_vars if TRUE, keeps all the variables from the Census
-#'                      shapefile obtained by tigris.  Defaults to FALSE.
+#'                      shapefile obtained by tigris.  Defaults to FALSE.  As the shapefile has its own \code{NAME} column, the
+#'                      shapefile's name is returned as \code{NAME.x} and the Census name for each geography
+#'                      (the \code{NAME} column when \code{keep_geo_vars = FALSE}) as \code{NAME.y}.
 #' @param shift_geo (deprecated) if TRUE, returns geometry with Alaska and Hawaii shifted for thematic
 #'                  mapping of the entire US.  As of May 2021, we recommend using \code{tigris::shift_geometry()}
 #'                  instead.
@@ -71,6 +319,16 @@ read_estimates_csv <- function(https_url, ftp_url, required_col) {
 #'                  in debugging and determining if error messages returned are
 #'                  due to tidycensus or the Census API. Copy to the API call into
 #'                  a browser and see what is returned by the API directly. Defaults to FALSE.
+#' @param drop_empty if TRUE and \code{geometry = TRUE}, drops rows with empty geometries.
+#'                   These are typically water-only areas, such as offshore block groups,
+#'                   that are not in the cartographic boundary files used by default; use
+#'                   \code{cb = FALSE} to return TIGER/Line geometries for these areas instead.
+#'                   Defaults to FALSE.
+#' @param cb if TRUE (the default), uses the Census Bureau's cartographic boundary files
+#'   for feature geometry when \code{geometry = TRUE}. These are generalized and clipped to
+#'   the shoreline. If FALSE, uses the more detailed TIGER/Line files, which include water
+#'   area. Note that tigris functions default to \code{cb = FALSE}. TIGER/Line files are
+#'   always used for 2011 and 2012, when cartographic boundary files are not available.
 #' @param ... other keyword arguments
 #'
 #' @return A tibble, or sf tibble, of population estimates data
@@ -97,7 +355,7 @@ get_estimates <- function(
   variables = NULL,
   breakdown = NULL,
   breakdown_labels = FALSE,
-  vintage = 2024,
+  vintage = 2025,
   year = vintage,
   state = NULL,
   county = NULL,
@@ -108,17 +366,21 @@ get_estimates <- function(
   shift_geo = FALSE,
   key = NULL,
   show_call = FALSE,
+  drop_empty = FALSE,
+  cb = TRUE,
   ...
 ) {
-  if (missing(vintage) && year > 2020) {
-    rlang::warn(c(
-      "For post-2020 Census estimates, `get_estimates()` now uses the `vintage` argument to specify the PEP vintage, and the `year` argument to isolate a year within that vintage.",
-      "!" = "This may be a breaking change in your code",
-      "!" = "Omitting `vintage` may lead to incorrect or unexpected results."
+  intercensal <- identical(product, "intercensal")
+
+  if (missing(vintage) && !missing(year) && year > 2020) {
+    rlang::warn(sprintf(
+      "Returning %s estimates from the Vintage %s Population Estimates. Specify `vintage` to use a different vintage.",
+      year,
+      vintage
     ))
   }
 
-  if (year > 2020) {
+  if (year > 2020 && !intercensal) {
     rlang::inform(sprintf("Using the Vintage %s Population Estimates", vintage))
   }
 
@@ -131,46 +393,170 @@ get_estimates <- function(
     )
   }
 
-  if (year < 2015) {
+  if (year < 2015 && !intercensal) {
     stop(
       "The Population Estimates API is not available in tidycensus for years prior to 2015. Consider using `time_series = TRUE` or the censusapi package for earlier estimates."
     )
   }
 
+  # Resolve county names once, so the data and geometry use the same county
+  county <- resolve_county_names(state, county)
+
   ###### New logic for 2020 and later
   # Adjust as needed over the next few months, and try to keep consistent with
   # previous years that are on the API
-  if (year >= 2020) {
-    if (!is.null(product) && product == "characteristics") {
+  # Intercensal estimates (#629): `vintage` is the end year of the series
+  if (intercensal) {
+    if (!vintage %in% c(2010, 2020)) {
+      rlang::abort(
+        "Intercensal estimates are available for `vintage = 2020` (2010-2020) and `vintage = 2010` (2000-2010)."
+      )
+    }
+
+    # Return the full series unless a specific year is requested
+    last_estimate <- if (vintage == 2020) 2019 else 2010
+    census_only <- !is.null(variables) && all(variables == "CENSUSPOP") &&
+      is.null(breakdown)
+
+    if (missing(year)) {
+      time_series <- TRUE
+    } else if (!year %in% (vintage - 10):last_estimate &&
+               !(year == vintage && census_only)) {
+      rlang::abort(sprintf(
+        "Intercensal estimates for %s-%s are available for %s through %s; use `variables = \"CENSUSPOP\"` with `year = %s` for the %s Census count.",
+        vintage - 10, vintage, vintage - 10, last_estimate, vintage, vintage
+      ))
+    }
+
+    if (!is.null(state) &&
+        "72" %in% suppressMessages(purrr::map_chr(state, validate_state))) {
+      rlang::abort(
+        "Intercensal estimates for Puerto Rico are not currently available in tidycensus."
+      )
+    }
+
+    rlang::inform(sprintf(
+      "Using the %s-%s intercensal population estimates",
+      vintage - 10,
+      vintage
+    ))
+  }
+
+  if (year >= 2020 || intercensal) {
+    if (
+      !is.null(product) &&
+        (product == "characteristics" || (intercensal && !is.null(breakdown)))
+    ) {
       if (!geography %in% c("state", "county", "cbsa", "metropolitan statistical area/micropolitan statistical area", "combined statistical area")) {
         rlang::abort(
           "The only supported geographies at this time for population characteristics 2020 and later are 'state', 'county', 'cbsa'/'metropolitan statistical area/micropolitan statistical area', and 'combined statistical area'."
         )
       }
 
-      if (vintage > 2024) {
-        rlang::abort(
-          "The Characteristics dataset has not yet been released for vintages beyond 2024"
-        )
-      }
+      if (intercensal) {
+        if (geography != "county") {
+          rlang::abort(
+            "Intercensal population characteristics are available for counties."
+          )
+        }
 
-      if (geography == "state") {
-        state_raw <- suppressWarnings(try(
-          suppressMessages(readr::read_csv(sprintf(
+        if (vintage == 2020) {
+          file_base <- "2010-2020/intercensal/county/asrh/cc-est2020int-alldata"
+        } else {
+          file_base <- "2000-2010/intercensal/county/co-est00int-alldata"
+        }
+
+        read_intercensal_county <- function(suffix) {
+          census_read_csv(
+            paste0("https://www2.census.gov/programs-surveys/popest/datasets/", file_base, suffix, ".csv"),
+            paste0("ftp://ftp2.census.gov/programs-surveys/popest/datasets/", file_base, suffix, ".csv"),
+            "STATE"
+          ) %>%
+            dplyr::mutate(
+              STATE = stringr::str_pad(STATE, 2, pad = "0"),
+              COUNTY = stringr::str_pad(COUNTY, 3, pad = "0")
+            )
+        }
+
+        if (!is.null(state)) {
+          state <- purrr::map_chr(state, validate_state)
+          county_raw <- purrr::map_dfr(state, ~ read_intercensal_county(paste0("-", .x)))
+        } else if (vintage == 2020) {
+          county_raw <- read_intercensal_county("")
+        } else {
+          # No all-counties file for 2000-2010, so combine the state files
+          county_raw <- purrr::map_dfr(
+            unique(fips_codes$state_code)[1:51],
+            ~ read_intercensal_county(paste0("-", .x))
+          )
+        }
+
+        if (!is.null(county)) {
+          county <- purrr::map_chr(county, function(x) {
+            validate_county(state, x)
+          })
+          county_raw <- dplyr::filter(county_raw, COUNTY %in% county)
+        }
+
+        parsed <- parse_pep_county_char(county_raw)
+
+        # Keep the July 1 estimates; drop the estimates base and Census counts
+        if (vintage == 2020) {
+          parsed <- parsed %>%
+            dplyr::filter(year %in% 2:11) %>%
+            dplyr::mutate(
+              year = dplyr::case_when(
+                year == 2 ~ 2010L,
+                year == 3 ~ 2011L,
+                year == 4 ~ 2012L,
+                year == 5 ~ 2013L,
+                year == 6 ~ 2014L,
+                year == 7 ~ 2015L,
+                year == 8 ~ 2016L,
+                year == 9 ~ 2017L,
+                year == 10 ~ 2018L,
+                year == 11 ~ 2019L
+              )
+            )
+        } else {
+          # The 2000-2010 file codes all ages as 99 and splits age 0 from 1-4
+          parsed <- parsed %>%
+            dplyr::filter(year %in% c(2:11, 13)) %>%
+            dplyr::mutate(
+              year = dplyr::case_when(
+                year == 2 ~ 2000L,
+                year == 3 ~ 2001L,
+                year == 4 ~ 2002L,
+                year == 5 ~ 2003L,
+                year == 6 ~ 2004L,
+                year == 7 ~ 2005L,
+                year == 8 ~ 2006L,
+                year == 9 ~ 2007L,
+                year == 10 ~ 2008L,
+                year == 11 ~ 2009L,
+                year == 13 ~ 2010L
+              ),
+              AGEGROUP = dplyr::case_when(
+                AGEGROUP == 99 ~ 0,
+                AGEGROUP == 0 ~ 1,
+                TRUE ~ AGEGROUP
+              )
+            )
+        }
+      } else if (geography == "state") {
+        state_raw <- census_read_csv(
+          sprintf(
             "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/state/asrh/sc-est%s-alldata6.csv",
             vintage,
             vintage
-          ))),
-          silent = TRUE
-        ))
-
-        if (inherits(state_raw, "try-error") || !"STATE" %in% names(state_raw)) {
-          state_raw <- suppressMessages(readr::read_csv(sprintf(
+          ),
+          sprintf(
             "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/asrh/sc-est%s-alldata6.csv",
             vintage,
             vintage
-          )))
-        }
+          ),
+          "STATE"
+        )
 
         if (!is.null(state)) {
           state <- validate_state(state)
@@ -218,51 +604,120 @@ get_estimates <- function(
             names_prefix = "POPESTIMATE"
           ) %>%
           dplyr::mutate(year = as.integer(year))
-      } else if (geography == "county") {
-        if (vintage > 2024) {
+      } else if (
+        geography == "county" &&
+          length(state) == 1 &&
+          identical(suppressMessages(validate_state(state)), "72")
+      ) {
+        # Puerto Rico municipios are published by age and sex only (#581)
+        if (any(c("RACE", "HISP") %in% breakdown)) {
           rlang::abort(
-            "The county characteristics dataset for this vintage has not yet been released."
+            "Race and Hispanic origin breakdowns are not available for Puerto Rico municipios. Use `AGEGROUP`, `AGE`, and/or `SEX` instead."
           )
         }
 
+        state <- validate_state(state)
+
+        county_raw <- read_pr_municipios(vintage)
+
+        if (!is.null(county)) {
+          county <- purrr::map_chr(county, function(x) {
+            validate_county(state, x)
+          })
+          county_raw <- dplyr::filter(county_raw, COUNTY %in% county)
+        }
+
+        parsed <- county_raw %>%
+          tidyr::pivot_longer(
+            c(TOT_MALE, TOT_FEMALE),
+            names_to = "SEX",
+            values_to = "value"
+          ) %>%
+          dplyr::mutate(
+            SEX = dplyr::case_when(
+              SEX == "TOT_MALE" ~ 1L,
+              SEX == "TOT_FEMALE" ~ 2L
+            ),
+            AGEGROUP = dplyr::case_when(
+              AGE %in% 0:4 ~ 1,
+              AGE %in% 5:9 ~ 2,
+              AGE %in% 10:14 ~ 3,
+              AGE %in% 15:19 ~ 4,
+              AGE %in% 20:24 ~ 5,
+              AGE %in% 25:29 ~ 6,
+              AGE %in% 30:34 ~ 7,
+              AGE %in% 35:39 ~ 8,
+              AGE %in% 40:44 ~ 9,
+              AGE %in% 45:49 ~ 10,
+              AGE %in% 50:54 ~ 11,
+              AGE %in% 55:59 ~ 12,
+              AGE %in% 60:64 ~ 13,
+              AGE %in% 65:69 ~ 14,
+              AGE %in% 70:74 ~ 15,
+              AGE %in% 75:79 ~ 16,
+              AGE %in% 80:84 ~ 17,
+              AGE == 85 ~ 18
+            ),
+            GEOID = paste0(STATE, COUNTY),
+            NAME = paste0(CTYNAME, ", Puerto Rico")
+          ) %>%
+          dplyr::select(GEOID, NAME, year = YEAR, AGE, AGEGROUP, SEX, value) %>%
+          dplyr::filter(year != 1) %>%
+          dplyr::mutate(
+            year = dplyr::case_when(
+              year == 2 ~ 2020L,
+              year == 3 ~ 2021L,
+              year == 4 ~ 2022L,
+              year == 5 ~ 2023L,
+              year == 6 ~ 2024L,
+              year == 7 ~ 2025L
+            )
+          )
+      } else if (geography == "county") {
         if (!is.null(state)) {
-          state <- validate_state(state)
+          state <- purrr::map_chr(state, validate_state)
 
-          county_raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(sprintf(
-              "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-alldata-%s.csv",
-              vintage,
-              vintage,
-              state
-            ))),
-            silent = TRUE
-          ))
-
-          if (inherits(county_raw, "try-error") || !"STATE" %in% names(county_raw)) {
-            county_raw <- suppressMessages(readr::read_csv(sprintf(
-              "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-alldata-%s.csv",
-              vintage,
-              vintage,
-              state
-            )))
+          if ("72" %in% state) {
+            rlang::abort(
+              "Request Puerto Rico municipios separately with `state = \"PR\"`."
+            )
           }
+
+          county_raw <- purrr::map_dfr(state, function(st) {
+            census_read_csv(
+              sprintf(
+                "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-alldata-%s.csv",
+                vintage,
+                vintage,
+                st
+              ),
+              sprintf(
+                "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-alldata-%s.csv",
+                vintage,
+                vintage,
+                st
+              ),
+              "STATE"
+            ) %>%
+              dplyr::mutate(
+                STATE = stringr::str_pad(STATE, 2, pad = "0"),
+                COUNTY = stringr::str_pad(COUNTY, 3, pad = "0")
+              )
+          })
         } else {
-          county_raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(sprintf(
+          county_raw <- census_read_csv(
+            sprintf(
               "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-alldata.csv",
               vintage,
               vintage
-            ))),
-            silent = TRUE
-          ))
-
-          if (inherits(county_raw, "try-error") || !"STATE" %in% names(county_raw)) {
-            county_raw <- suppressMessages(readr::read_csv(sprintf(
+            ),
+            sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/asrh/cc-est%s-alldata.csv",
               vintage,
               vintage
-            )))
-          }
+            ),
+            "STATE"
+          )
         }
 
         if (!is.null(county)) {
@@ -272,73 +727,7 @@ get_estimates <- function(
           county_raw <- dplyr::filter(county_raw, COUNTY %in% county)
         }
 
-        total_vals <- c(
-          "TOT",
-          "WA",
-          "BA",
-          "IA",
-          "AA",
-          "NA",
-          "TOM",
-          "WAC",
-          "BAC",
-          "IAC",
-          "AAC",
-          "NAC"
-        )
-
-        parsed <- county_raw %>%
-          tidyr::pivot_longer(
-            TOT_POP:HNAC_FEMALE,
-            names_to = c("category", "SEX"),
-            values_to = "value",
-            names_sep = "_"
-          ) %>%
-          dplyr::mutate(
-            category = ifelse(
-              category %in% total_vals,
-              paste0("BH", category),
-              category
-            ),
-            category = stringr::str_replace(category, "H", "H_")
-          ) %>%
-          tidyr::separate_wider_delim(
-            category,
-            delim = "_",
-            names = c("HISP", "RACE")
-          ) %>%
-          dplyr::filter(SEX != "POP") %>%
-          dplyr::mutate(RACE = ifelse(RACE == "", "TOT", RACE)) %>%
-          dplyr::mutate(
-            HISP = dplyr::case_when(
-              HISP == "BH" ~ 0L,
-              HISP == "H" ~ 2L,
-              HISP == "NH" ~ 1L
-            ),
-            RACE = dplyr::case_when(
-              RACE == "TOT" ~ 0L,
-              RACE == "WA" ~ 1L,
-              RACE == "BA" ~ 2L,
-              RACE == "IA" ~ 3L,
-              RACE == "AA" ~ 4L,
-              RACE == "NA" ~ 5L,
-              RACE == "TOM" ~ 6L,
-              RACE == "WAC" ~ 7L,
-              RACE == "BAC" ~ 8L,
-              RACE == "IAC" ~ 9L,
-              RACE == "AAC" ~ 10L,
-              RACE == "NAC" ~ 11L,
-            ),
-            SEX = dplyr::case_when(
-              SEX == "MALE" ~ 1L,
-              SEX == "FEMALE" ~ 2L
-            ),
-            GEOID = paste0(STATE, COUNTY),
-            NAME = paste0(CTYNAME, ", ", STNAME)
-          ) %>%
-          dplyr::rename(AGEGROUP = AGEGRP) %>%
-          dplyr::select(GEOID, NAME, YEAR:value) %>%
-          dplyr::rename(year = YEAR) %>%
+        parsed <- parse_pep_county_char(county_raw) %>%
           dplyr::filter(year != 1) %>%
           dplyr::mutate(
             year = dplyr::case_when(
@@ -347,32 +736,24 @@ get_estimates <- function(
               year == 4 ~ 2022L,
               year == 5 ~ 2023L,
               year == 6 ~ 2024L,
+              year == 7 ~ 2025L,
               TRUE ~ year
             )
           )
       } else if (geography == "cbsa" || geography == "metropolitan statistical area/micropolitan statistical area") {
-        if (vintage > 2024) {
-          rlang::abort(
-            "The CBSA characteristics dataset for this vintage has not yet been released."
-          )
-        }
-
-        cbsa_raw <- suppressWarnings(try(
-          suppressMessages(readr::read_csv(sprintf(
+        cbsa_raw <- census_read_csv(
+          sprintf(
             "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/asrh/cbsa-est%s-alldata-char.csv",
             vintage,
             vintage
-          ))),
-          silent = TRUE
-        ))
-
-        if (inherits(cbsa_raw, "try-error") || !"CBSA" %in% names(cbsa_raw)) {
-          cbsa_raw <- suppressMessages(readr::read_csv(sprintf(
+          ),
+          sprintf(
             "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/asrh/cbsa-est%s-alldata-char.csv",
             vintage,
             vintage
-          )))
-        }
+          ),
+          "CBSA"
+        )
 
         total_vals <- c(
           "TOT",
@@ -448,32 +829,24 @@ get_estimates <- function(
               year == 4 ~ 2022L,
               year == 5 ~ 2023L,
               year == 6 ~ 2024L,
+              year == 7 ~ 2025L,
               TRUE ~ year
             )
           )
       } else if (geography == "combined statistical area") {
-        if (vintage > 2024) {
-          rlang::abort(
-            "The CSA characteristics dataset for this vintage has not yet been released."
-          )
-        }
-
-        csa_raw <- suppressWarnings(try(
-          suppressMessages(readr::read_csv(sprintf(
+        csa_raw <- census_read_csv(
+          sprintf(
             "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/asrh/csa-est%s-alldata-char.csv",
             vintage,
             vintage
-          ))),
-          silent = TRUE
-        ))
-
-        if (inherits(csa_raw, "try-error") || !"CSA" %in% names(csa_raw)) {
-          csa_raw <- suppressMessages(readr::read_csv(sprintf(
+          ),
+          sprintf(
             "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/asrh/csa-est%s-alldata-char.csv",
             vintage,
             vintage
-          )))
-        }
+          ),
+          "CSA"
+        )
 
         total_vals <- c(
           "TOT",
@@ -549,6 +922,7 @@ get_estimates <- function(
               year == 4 ~ 2022L,
               year == 5 ~ 2023L,
               year == 6 ~ 2024L,
+              year == 7 ~ 2025L,
               TRUE ~ year
             )
           )
@@ -558,15 +932,22 @@ get_estimates <- function(
         )
       }
 
-      # Handle timeseries
-      if (!time_series) {
-        in_year <- year
+      parsed$NAME <- fix_pep_encoding(parsed$NAME)
 
+      # Handle timeseries
+      in_year <- year
+
+      if (!time_series) {
         parsed <- dplyr::filter(parsed, year == in_year)
+      } else {
+        parsed <- dplyr::filter(parsed, year <= in_year)
       }
 
       if (!is.null(breakdown)) {
-        parsed <- dplyr::filter(parsed, RACE < 7)
+        # Puerto Rico municipios have no RACE / HISP columns
+        if ("RACE" %in% names(parsed)) {
+          parsed <- dplyr::filter(parsed, RACE < 7)
+        }
 
         grouping_vars <- c("GEOID", "NAME", "year", breakdown)
 
@@ -575,11 +956,11 @@ get_estimates <- function(
           parsed <- dplyr::filter(parsed, SEX != 0)
         }
 
-        if (!"HISP" %in% grouping_vars) {
+        if (!"HISP" %in% grouping_vars && "HISP" %in% names(parsed)) {
           parsed <- dplyr::filter(parsed, HISP != 0)
         }
 
-        if (!"RACE" %in% grouping_vars) {
+        if (!"RACE" %in% grouping_vars && "RACE" %in% names(parsed)) {
           parsed <- dplyr::filter(parsed, RACE != 0)
         }
 
@@ -653,15 +1034,20 @@ get_estimates <- function(
           }
         }
 
-        return(output)
+        dat2 <- output
       } else {
-        return(parsed)
+        dat2 <- parsed
       }
     } else if (
-      product == "population" || product == "components" || is.null(product)
+      is.null(product) ||
+        product %in% c("population", "components", "intercensal", "housing")
     ) {
       if (!is.null(product)) {
-        if (product == "population") {
+        if (intercensal) {
+          if (is.null(variables)) {
+            variables <- "POPESTIMATE"
+          }
+        } else if (product == "population") {
           variables <- if (geography == "place") {
             "POPESTIMATE"
           } else {
@@ -673,47 +1059,110 @@ get_estimates <- function(
           } else {
             variables <- components_estimates_variables22
           }
+        } else if (product == "housing") {
+          variables <- "HUEST"
         }
       }
 
       # Get the data into a reasonable first format that is consistent for downstream use
-      if (geography == "us") {
+      if (identical(product, "housing")) {
+        if (!is.null(state) &&
+            "72" %in% suppressMessages(purrr::map_chr(state, validate_state))) {
+          rlang::abort(
+            "The Census Bureau does not publish housing unit estimates for Puerto Rico."
+          )
+        }
+
+        base <- read_housing_estimates(geography, vintage)
+      } else if (intercensal) {
+        if (!geography %in% c("state", "county", "place")) {
+          rlang::abort(
+            "Intercensal population estimates are available for states, counties, and places."
+          )
+        }
+
+        if (vintage == 2020) {
+          file_path <- "2010-2020/intercensal/cities/sub-est2020int.csv"
+        } else {
+          file_path <- "2000-2010/intercensal/cities/sub-est00int.csv"
+        }
+
+        raw <- census_read_csv(
+          paste0("https://www2.census.gov/programs-surveys/popest/datasets/", file_path),
+          paste0("ftp://ftp2.census.gov/programs-surveys/popest/datasets/", file_path),
+          "SUMLEV"
+        )
+
+        sumlev <- c(state = "040", county = "050", place = "162")[[geography]]
+
+        raw <- raw %>%
+          dplyr::filter(SUMLEV == sumlev) %>%
+          dplyr::mutate(STATE = stringr::str_pad(STATE, 2, pad = "0"))
+
+        if (geography == "state") {
+          raw <- dplyr::mutate(raw, GEOID = STATE)
+        } else if (geography == "county") {
+          raw <- dplyr::mutate(
+            raw,
+            GEOID = paste0(STATE, stringr::str_pad(COUNTY, 3, pad = "0")),
+            NAME = paste0(NAME, ", ", STNAME)
+          )
+        } else {
+          raw <- dplyr::mutate(
+            raw,
+            GEOID = paste0(STATE, stringr::str_pad(PLACE, 5, pad = "0")),
+            NAME = paste0(NAME, ", ", STNAME)
+          )
+        }
+
+        # CENSUS2020POP -> CENSUSPOP2020 so the year splits off like the others
+        base <- raw %>%
+          dplyr::select(
+            GEOID,
+            NAME,
+            dplyr::matches("^(ESTIMATESBASE|POPESTIMATE|CENSUS)")
+          ) %>%
+          dplyr::rename_with(
+            ~ sub("^CENSUS(\\d{4})POP$", "CENSUSPOP\\1", .x),
+            dplyr::starts_with("CENSUS")
+          ) %>%
+          tidyr::pivot_longer(
+            -c(GEOID, NAME),
+            names_to = c("variable", "year"),
+            names_pattern = "(\\D+)(\\d+)",
+            values_to = "value"
+          )
+      } else if (geography == "us") {
         if (vintage == 2021) {
-          raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(sprintf(
+          raw <- census_read_csv(
+            sprintf(
               "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-alldata.csv",
               vintage,
               vintage
-            ))),
-            silent = TRUE
-          ))
-
-          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
-            raw <- suppressMessages(readr::read_csv(sprintf(
+            ),
+            sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-alldata.csv",
               vintage,
               vintage
-            )))
-          }
+            ),
+            "SUMLEV"
+          )
 
           raw <- raw %>% dplyr::filter(SUMLEV == "010")
         } else {
-          raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(sprintf(
+          raw <- census_read_csv(
+            sprintf(
               "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
               vintage
-            ))),
-            silent = TRUE
-          ))
-
-          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
-            raw <- suppressMessages(readr::read_csv(sprintf(
+            ),
+            sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
               vintage
-            )))
-          }
+            ),
+            "SUMLEV"
+          )
 
           raw <- raw %>% dplyr::filter(SUMLEV == "010")
         }
@@ -734,43 +1183,37 @@ get_estimates <- function(
           dplyr::mutate(variable = stringr::str_remove(variable, "_"))
       } else if (geography == "region") {
         if (vintage == 2021) {
-          raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(sprintf(
+          raw <- census_read_csv(
+            sprintf(
               "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-alldata.csv",
               vintage,
               vintage
-            ))),
-            silent = TRUE
-          ))
-
-          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
-            raw <- suppressMessages(readr::read_csv(sprintf(
+            ),
+            sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-alldata.csv",
               vintage,
               vintage
-            )))
-          }
+            ),
+            "SUMLEV"
+          )
 
           raw <- raw %>%
             dplyr::filter(SUMLEV == "020") %>%
             dplyr::mutate(GEOID = REGION)
         } else {
-          raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(sprintf(
+          raw <- census_read_csv(
+            sprintf(
               "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
               vintage
-            ))),
-            silent = TRUE
-          ))
-
-          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
-            raw <- suppressMessages(readr::read_csv(sprintf(
+            ),
+            sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
               vintage
-            )))
-          }
+            ),
+            "SUMLEV"
+          )
 
           raw <- raw %>%
             dplyr::filter(SUMLEV == "020") %>%
@@ -796,22 +1239,19 @@ get_estimates <- function(
             "Divisions are not available in the 2021 vintage dataset."
           )
         } else {
-          raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(sprintf(
+          raw <- census_read_csv(
+            sprintf(
               "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
               vintage
-            ))),
-            silent = TRUE
-          ))
-
-          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
-            raw <- suppressMessages(readr::read_csv(sprintf(
+            ),
+            sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
               vintage
-            )))
-          }
+            ),
+            "SUMLEV"
+          )
 
           raw <- raw %>%
             dplyr::filter(SUMLEV == "030") %>%
@@ -833,43 +1273,37 @@ get_estimates <- function(
           dplyr::mutate(variable = stringr::str_remove(variable, "_"))
       } else if (geography == "state") {
         if (vintage == 2021) {
-          raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(sprintf(
+          raw <- census_read_csv(
+            sprintf(
               "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-alldata.csv",
               vintage,
               vintage
-            ))),
-            silent = TRUE
-          ))
-
-          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
-            raw <- suppressMessages(readr::read_csv(sprintf(
+            ),
+            sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-alldata.csv",
               vintage,
               vintage
-            )))
-          }
+            ),
+            "SUMLEV"
+          )
 
           raw <- raw %>%
             dplyr::filter(SUMLEV == "040") %>%
             dplyr::mutate(GEOID = STATE)
         } else {
-          raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(sprintf(
+          raw <- census_read_csv(
+            sprintf(
               "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
               vintage
-            ))),
-            silent = TRUE
-          ))
-
-          if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
-            raw <- suppressMessages(readr::read_csv(sprintf(
+            ),
+            sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/state/totals/NST-EST%s-ALLDATA.csv",
               vintage,
               vintage
-            )))
-          }
+            ),
+            "SUMLEV"
+          )
 
           raw <- raw %>%
             dplyr::filter(SUMLEV == "040") %>%
@@ -890,22 +1324,19 @@ get_estimates <- function(
           ) %>%
           dplyr::mutate(variable = stringr::str_remove(variable, "_"))
       } else if (geography == "county") {
-        raw <- suppressWarnings(try(
-          suppressMessages(readr::read_csv(sprintf(
+        raw <- census_read_csv(
+          sprintf(
             "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/totals/co-est%s-alldata.csv",
             vintage,
             vintage
-          ))),
-          silent = TRUE
-        ))
-
-        if (inherits(raw, "try-error") || !"SUMLEV" %in% names(raw)) {
-          raw <- suppressMessages(readr::read_csv(sprintf(
+          ),
+          sprintf(
             "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/counties/totals/co-est%s-alldata.csv",
             vintage,
             vintage
-          )))
-        }
+          ),
+          "SUMLEV"
+        )
 
         raw <- raw %>%
           dplyr::filter(SUMLEV == "050") %>%
@@ -936,28 +1367,72 @@ get_estimates <- function(
             values_to = "value"
           ) %>%
           dplyr::mutate(variable = stringr::str_remove(variable, "_"))
+
+        # Puerto Rico municipios are published separately from the county
+        # file; add them when requested (#581)
+        if (
+          !is.null(state) &&
+            "72" %in% suppressMessages(purrr::map_chr(state, validate_state))
+        ) {
+          if (!is.null(product) && product == "components") {
+            rlang::abort(
+              "Components of population change are not published for Puerto Rico municipios."
+            )
+          }
+
+          # NPOPCHG isn't in the file, but is the change from the prior
+          # estimate (or from the April 2020 base for 2020)
+          pr_base <- read_pr_municipios(vintage) %>%
+            dplyr::group_by(STATE, COUNTY, CTYNAME, YEAR) %>%
+            dplyr::summarize(value = sum(TOT_POP), .groups = "drop") %>%
+            dplyr::group_by(STATE, COUNTY, CTYNAME) %>%
+            dplyr::arrange(YEAR, .by_group = TRUE) %>%
+            dplyr::mutate(NPOPCHG = value - dplyr::lag(value)) %>%
+            dplyr::ungroup() %>%
+            dplyr::mutate(
+              GEOID = paste0(STATE, COUNTY),
+              NAME = paste0(CTYNAME, ", Puerto Rico"),
+              ESTIMATESBASE = ifelse(YEAR == 1, value, NA),
+              POPESTIMATE = ifelse(YEAR == 1, NA, value),
+              year = dplyr::case_when(
+                YEAR == 1 ~ "2020",
+                YEAR == 2 ~ "2020",
+                YEAR == 3 ~ "2021",
+                YEAR == 4 ~ "2022",
+                YEAR == 5 ~ "2023",
+                YEAR == 6 ~ "2024",
+                YEAR == 7 ~ "2025"
+              )
+            ) %>%
+            dplyr::select(GEOID, NAME, year, ESTIMATESBASE, POPESTIMATE, NPOPCHG) %>%
+            tidyr::pivot_longer(
+              c(ESTIMATESBASE, POPESTIMATE, NPOPCHG),
+              names_to = "variable",
+              values_to = "value",
+              values_drop_na = TRUE
+            )
+
+          base <- dplyr::bind_rows(base, pr_base)
+        }
       } else if (
         geography == "cbsa" ||
           geography ==
             "metropolitan statistical area/micropolitan statistical area"
       ) {
         if (vintage != 2022) {
-          raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(sprintf(
+          raw <- census_read_csv(
+            sprintf(
               "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/totals/cbsa-est%s-alldata.csv",
               vintage,
               vintage
-            ))),
-            silent = TRUE
-          ))
-
-          if (inherits(raw, "try-error") || !"LSAD" %in% names(raw)) {
-            raw <- suppressMessages(readr::read_csv(sprintf(
+            ),
+            sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/totals/cbsa-est%s-alldata.csv",
               vintage,
               vintage
-            )))
-          }
+            ),
+            "LSAD"
+          )
 
           raw <- raw %>%
             dplyr::filter(
@@ -969,18 +1444,11 @@ get_estimates <- function(
             ) %>%
             dplyr::mutate(GEOID = CBSA)
         } else {
-          raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(
-              "https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/metro/totals/cbsa-est2022.csv"
-            )),
-            silent = TRUE
-          ))
-
-          if (inherits(raw, "try-error") || !"LSAD" %in% names(raw)) {
-            raw <- suppressMessages(readr::read_csv(
-              "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-2022/metro/totals/cbsa-est2022.csv"
-            ))
-          }
+          raw <- census_read_csv(
+            "https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/metro/totals/cbsa-est2022.csv",
+            "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-2022/metro/totals/cbsa-est2022.csv",
+            "LSAD"
+          )
 
           raw <- raw %>%
             dplyr::filter(
@@ -1004,41 +1472,70 @@ get_estimates <- function(
             values_to = "value"
           ) %>%
           dplyr::mutate(variable = stringr::str_remove(variable, "_"))
+
+        # Puerto Rico metro areas are published in a separate file (#581)
+        if (vintage >= 2025) {
+          pr_raw <- census_read_csv(
+            sprintf(
+              "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/totals/prc-cbsa-est%s.csv",
+              vintage,
+              vintage
+            ),
+            sprintf(
+              "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/totals/prc-cbsa-est%s.csv",
+              vintage,
+              vintage
+            ),
+            "LSAD"
+          ) %>%
+            dplyr::filter(
+              LSAD %in%
+                c(
+                  "Micropolitan Statistical Area",
+                  "Metropolitan Statistical Area"
+                )
+            ) %>%
+            dplyr::mutate(GEOID = CBSA)
+
+          pr_raw <- pr_raw[, !(names(pr_raw) %in% c("MDIV", "STCOU", "LSAD", "CBSA"))]
+
+          pr_base <- pr_raw %>%
+            dplyr::select(GEOID, NAME, dplyr::everything()) %>%
+            tidyr::pivot_longer(
+              -c(GEOID, NAME),
+              names_to = c("variable", "year"),
+              names_pattern = "(\\D+)(\\d+)",
+              values_to = "value"
+            ) %>%
+            dplyr::mutate(variable = stringr::str_remove(variable, "_"))
+
+          base <- dplyr::bind_rows(base, pr_base)
+        }
       } else if (geography == "combined statistical area") {
         if (vintage != 2022) {
-          raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(sprintf(
+          raw <- census_read_csv(
+            sprintf(
               "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/totals/csa-est%s-alldata.csv",
               vintage,
               vintage
-            ))),
-            silent = TRUE
-          ))
-
-          if (inherits(raw, "try-error") || !"LSAD" %in% names(raw)) {
-            raw <- suppressMessages(readr::read_csv(sprintf(
+            ),
+            sprintf(
               "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/totals/csa-est%s-alldata.csv",
               vintage,
               vintage
-            )))
-          }
+            ),
+            "LSAD"
+          )
 
           raw <- raw %>%
             dplyr::filter(LSAD == "Combined Statistical Area") %>%
             dplyr::mutate(GEOID = CSA)
         } else {
-          raw <- suppressWarnings(try(
-            suppressMessages(readr::read_csv(
-              "https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/metro/totals/csa-est2022.csv"
-            )),
-            silent = TRUE
-          ))
-
-          if (inherits(raw, "try-error") || !"LSAD" %in% names(raw)) {
-            raw <- suppressMessages(readr::read_csv(
-              "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-2022/metro/totals/csa-est2022.csv"
-            ))
-          }
+          raw <- census_read_csv(
+            "https://www2.census.gov/programs-surveys/popest/datasets/2020-2022/metro/totals/csa-est2022.csv",
+            "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-2022/metro/totals/csa-est2022.csv",
+            "LSAD"
+          )
 
           raw <- raw %>%
             dplyr::filter(LSAD == "Combined Statistical Area") %>%
@@ -1058,12 +1555,47 @@ get_estimates <- function(
             values_to = "value"
           ) %>%
           dplyr::mutate(variable = stringr::str_remove(variable, "_"))
+
+        # Puerto Rico metro areas are published in a separate file (#581)
+        if (vintage >= 2025) {
+          pr_raw <- census_read_csv(
+            sprintf(
+              "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/totals/prc-csa-est%s.csv",
+              vintage,
+              vintage
+            ),
+            sprintf(
+              "ftp://ftp2.census.gov/programs-surveys/popest/datasets/2020-%s/metro/totals/prc-csa-est%s.csv",
+              vintage,
+              vintage
+            ),
+            "LSAD"
+          ) %>%
+            dplyr::filter(
+              LSAD == "Combined Statistical Area"
+            ) %>%
+            dplyr::mutate(GEOID = CSA)
+
+          pr_raw <- pr_raw[, !(names(pr_raw) %in% c("MDIV", "STCOU", "LSAD", "CBSA", "CSA"))]
+
+          pr_base <- pr_raw %>%
+            dplyr::select(GEOID, NAME, dplyr::everything()) %>%
+            tidyr::pivot_longer(
+              -c(GEOID, NAME),
+              names_to = c("variable", "year"),
+              names_pattern = "(\\D+)(\\d+)",
+              values_to = "value"
+            ) %>%
+            dplyr::mutate(variable = stringr::str_remove(variable, "_"))
+
+          base <- dplyr::bind_rows(base, pr_base)
+        }
       } else if (geography == "place") {
         # if (vintage > 2022) {
         #   rlang::abort("The most recent PEP release for this geography is 2022.")
         # }
 
-        raw <- read_estimates_csv(
+        raw <- census_read_csv(
           sprintf(
             "https://www2.census.gov/programs-surveys/popest/datasets/2020-%s/cities/totals/sub-est%s.csv",
             vintage,
@@ -1117,6 +1649,7 @@ get_estimates <- function(
       base$year <- as.integer(base$year)
       year_to_keep <- as.integer(year)
       base$GEOID <- as.character(base$GEOID)
+      base$NAME <- fix_pep_encoding(base$NAME)
 
       # Use `variables = 'all'`
       if (all(variables == "all")) {
@@ -1212,7 +1745,7 @@ get_estimates <- function(
       }
     } else {
       rlang::abort(
-        "Invalid product; use 'population', 'components', or 'characteristics', or leave NULL."
+        "Invalid product; use 'population', 'components', 'characteristics', or 'housing', or leave NULL."
       )
     }
   } else {
@@ -1240,7 +1773,7 @@ get_estimates <- function(
           result <- map(
             state,
             ~ {
-              suppressMessages(
+              suppress_messages_but_calls(
                 insist_get_estimates(
                   geography = geography,
                   product = product,
@@ -1254,6 +1787,8 @@ get_estimates <- function(
                   output = output,
                   geometry = geometry,
                   keep_geo_vars = keep_geo_vars,
+                  drop_empty = drop_empty,
+                  cb = cb,
                   shift_geo = shift_geo,
                   key = key,
                   show_call = show_call
@@ -1261,7 +1796,7 @@ get_estimates <- function(
               )
             }
           ) %>%
-            reduce(rbind)
+            bind_spatial_rows()
           geoms <- unique(st_geometry_type(result))
           if (length(geoms) > 1) {
             result <- st_cast(result, "MULTIPOLYGON")
@@ -1273,7 +1808,7 @@ get_estimates <- function(
           result <- map_df(
             state,
             ~ {
-              suppressMessages(
+              suppress_messages_but_calls(
                 insist_get_estimates(
                   geography = geography,
                   product = product,
@@ -1287,6 +1822,8 @@ get_estimates <- function(
                   output = output,
                   geometry = geometry,
                   keep_geo_vars = keep_geo_vars,
+                  drop_empty = drop_empty,
+                  cb = cb,
                   shift_geo = shift_geo,
                   key = key,
                   show_call = show_call
@@ -1323,7 +1860,7 @@ get_estimates <- function(
 
     # For a variables vector, check to see if the variables cut across multiple products
     if (!is.null(variables) && length(variables) > 1) {
-      if (!is.null(product) && product != "charagegroups") {
+      if (is.null(product) || product != "charagegroups") {
         check <- c(
           any(variables %in% population_estimates_variables),
           any(variables %in% components_estimates_variables),
@@ -1333,9 +1870,16 @@ get_estimates <- function(
         check <- FALSE
       }
 
-      # if there is more than one TRUE, grab data by variable
+      # if there is more than one TRUE, grab data by variable and join the
+      # results on GEOID and date (the API returns rows in a different order for
+      # each product, so they can't be bound side by side, and names can differ
+      # between products, e.g. spacing in Vintage 2015)
       if (length(which(check)) > 1) {
-        dat <- map_dfc(variables, function(eachvar) {
+        if (time_series && check[2]) {
+          stop("Components of change are indexed by period, and population and housing estimates by date, so they can't be combined in one time series request. Request components of change separately.", call. = FALSE)
+        }
+
+        dat <- map(variables, function(eachvar) {
           load_data_estimates(
             geography = geography,
             product = NULL,
@@ -1347,10 +1891,11 @@ get_estimates <- function(
             key = key,
             show_call = show_call
           )
-        })
-
-        # Remove any extra GEOID or GEONAME columns
-        dat <- dat[, -grep("GEOID[0-9]|GEONAME[0-9]|NAME[0-9]", colnames(dat))]
+        }) %>%
+          purrr::reduce(function(x, y) {
+            y <- y[, !names(y) %in% c("NAME", "GEONAME"), drop = FALSE]
+            left_join(x, y, by = intersect(names(x), names(y)))
+          })
       } else {
         dat <- load_data_estimates(
           geography = geography,
@@ -1426,11 +1971,7 @@ get_estimates <- function(
         }
       }
 
-      if (!is.null(names(variables))) {
-        for (i in 1:length(variables)) {
-          dat2[dat2 == variables[i]] <- names(variables)[i]
-        }
-      }
+      dat2 <- recode_named_variables(dat2, variables)
     } else if (output == "wide") {
       dat <- dat[!duplicated(names(dat), fromLast = TRUE)]
 
@@ -1525,15 +2066,7 @@ get_estimates <- function(
         }
       }
 
-      if (!is.null(names(variables))) {
-        for (i in 1:length(variables)) {
-          names(dat2) <- str_replace(
-            names(dat2),
-            variables[i],
-            names(variables)[i]
-          )
-        }
-      }
+      dat2 <- recode_wide_variable_names(dat2, variables)
 
       if ("GEONAME" %in% names(dat2)) {
         dat2 <- dat2 %>%
@@ -1576,24 +2109,17 @@ get_estimates <- function(
         )
       }
     } else {
-      # Handle CB file availability
-      if (year == 2025) {
-        geom <- try(suppressMessages(use_tigris(
-          geography = geography,
-          year = 2024,
-          state = state,
-          county = county,
-          ...
-        )))
-      } else {
-        geom <- try(suppressMessages(use_tigris(
-          geography = geography,
-          year = year,
-          state = state,
-          county = county,
-          ...
-        )))
-      }
+      geom <- try(suppressMessages(use_tigris(
+        geography = geography,
+        # GEOIDs in the 2020s and intercensal files follow the vintage's
+        # boundaries (e.g. Connecticut's planning regions for every year of
+        # Vintage 2022 and later)
+        year = if (year >= 2020 || intercensal) vintage else year,
+        state = state,
+        county = county,
+        cb = cb,
+        ...
+      )))
 
       if ("try-error" %in% class(geom)) {
         stop(
@@ -1615,6 +2141,12 @@ get_estimates <- function(
       out <- right_join(geom, dat2, by = "GEOID") %>%
         as_tibble() %>%
         st_as_sf()
+    }
+
+    # Rows in the data but not the boundary file (e.g. water-only areas
+    # clipped from cartographic boundary files) have empty geometries (#650)
+    if (drop_empty) {
+      out <- out[!sf::st_is_empty(out), ]
     }
 
     return(out)

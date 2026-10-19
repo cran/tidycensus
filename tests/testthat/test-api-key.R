@@ -30,17 +30,17 @@ test_that("metadata requests include the Census API key", {
   captured <- list()
 
   local_mocked_bindings(
-    GET = function(url, query = list(), ...) {
+    census_api_get = function(url, query = list(), ...) {
       captured[[length(captured) + 1]] <<- list(url = url, query = query)
-      stop("captured GET", call. = FALSE)
+      stop("captured request", call. = FALSE)
     }
   )
 
-  expect_error(load_variables(2022, "acs5", key = "metadata-key"), "captured GET")
+  expect_error(load_variables(2022, "acs5", key = "metadata-key"), "captured request")
   expect_equal(captured[[1]]$query$key, "metadata-key")
   expect_match(captured[[1]]$url, "/2022/acs/acs5/variables\\.json$")
 
-  expect_error(get_pop_groups(2020, "ddhca", key = "metadata-key"), "captured GET")
+  expect_error(get_pop_groups(2020, "ddhca", key = "metadata-key"), "captured request")
   expect_equal(captured[[2]]$query$key, "metadata-key")
   expect_match(captured[[2]]$url, "/2020/dec/ddhca/variables\\.json$")
 })
@@ -51,14 +51,14 @@ test_that("load_variables deprecates cache without writing to a cache directory"
   captured <- list()
 
   local_mocked_bindings(
-    GET = function(url, query = list(), ...) {
+    census_api_get = function(url, query = list(), ...) {
       captured[[length(captured) + 1]] <<- list(url = url, query = query)
-      stop("captured GET", call. = FALSE)
+      stop("captured request", call. = FALSE)
     }
   )
 
   expect_warning(
-    expect_error(load_variables(2022, "acs5", cache = TRUE, key = "metadata-key"), "captured GET"),
+    expect_error(load_variables(2022, "acs5", cache = TRUE, key = "metadata-key"), "captured request"),
     "`cache` is deprecated"
   )
   expect_equal(captured[[1]]$query$key, "metadata-key")
@@ -70,20 +70,17 @@ test_that("table expansion helpers pass direct keys to Census group metadata", {
   seen <- list()
 
   local_mocked_bindings(
-    GET = function(url, query = list(), ...) {
+    census_api_get = function(url, query = list(), ...) {
       seen[[length(seen) + 1]] <<- list(
         url = url,
         query = query
       )
-      structure(list(status_code = 200L, text = if (grepl("B01001", url)) {
+      httr2::response(200, url = url, body = charToRaw(if (grepl("B01001", url)) {
         '{"variables":{"B01001_001E":{},"B01001_001EA":{},"B01001_001M":{},"B01001_002E":{},"B01001_002M":{},"GEO_ID":{},"NAME":{}}}'
       } else {
         '{"variables":{"P1_001N":{},"P1_001NA":{},"P1_002N":{},"GEO_ID":{},"NAME":{}}}'
-      }), class = "response")
-    },
-    status_code = function(x) x$status_code,
-    http_status = function(x) list(category = "Success", message = "OK"),
-    content = function(x, as = NULL, ...) x$text
+      }))
+    }
   )
 
   expect_equal(
@@ -360,9 +357,9 @@ test_that("low-level Census API data requests include the API key", {
   captured <- list()
 
   local_mocked_bindings(
-    GET = function(url, query = list(), ...) {
+    census_api_get = function(url, query = list(), ...) {
       captured[[length(captured) + 1]] <<- list(url = url, query = query)
-      stop("captured GET", call. = FALSE)
+      stop("captured request", call. = FALSE)
     }
   )
 
@@ -374,7 +371,7 @@ test_that("low-level Census API data requests include the API key", {
       year = 2022,
       survey = "acs5"
     ),
-    "captured GET"
+    "captured request"
   )
 
   expect_error(
@@ -386,7 +383,7 @@ test_that("low-level Census API data requests include the API key", {
       sumfile = "pl",
       pop_group = NULL
     ),
-    "captured GET"
+    "captured request"
   )
 
   expect_error(
@@ -398,7 +395,7 @@ test_that("low-level Census API data requests include the API key", {
       year = 2019,
       time_series = FALSE
     ),
-    "captured GET"
+    "captured request"
   )
 
   expect_error(
@@ -413,7 +410,7 @@ test_that("low-level Census API data requests include the API key", {
       recode = FALSE,
       show_call = FALSE
     ),
-    "captured GET"
+    "captured request"
   )
 
   expect_error(
@@ -428,7 +425,7 @@ test_that("low-level Census API data requests include the API key", {
       recode = FALSE,
       show_call = FALSE
     ),
-    "captured GET"
+    "captured request"
   )
 
   expect_error(
@@ -439,7 +436,7 @@ test_that("low-level Census API data requests include the API key", {
       year = 2018,
       state = "TX"
     ),
-    "captured GET"
+    "captured request"
   )
 
   expect_true(all(vapply(captured, function(x) identical(x$query$key, "data-key"), logical(1))))
@@ -451,9 +448,9 @@ test_that("low-level table data requests use Census API groups", {
   captured <- list()
 
   local_mocked_bindings(
-    GET = function(url, query = list(), ...) {
+    census_api_get = function(url, query = list(), ...) {
       captured[[length(captured) + 1]] <<- list(url = url, query = query)
-      stop("captured GET", call. = FALSE)
+      stop("captured request", call. = FALSE)
     }
   )
 
@@ -466,7 +463,7 @@ test_that("low-level table data requests use Census API groups", {
       survey = "acs5",
       group = "B01001"
     ),
-    "captured GET"
+    "captured request"
   )
 
   expect_error(
@@ -479,10 +476,42 @@ test_that("low-level table data requests use Census API groups", {
       pop_group = NULL,
       group = "P1"
     ),
-    "captured GET"
+    "captured request"
   )
 
   expect_equal(captured[[1]]$query$get, "group(B01001)")
   expect_equal(captured[[2]]$query$get, "group(P1)")
   expect_true(all(vapply(captured, function(x) identical(x$query$key, "data-key"), logical(1))))
+})
+
+test_that("load_variables adds table universes when the API publishes them (#596)", {
+  variables_json <- '{"variables":{"B01001_001E":{"label":"Estimate!!Total:","concept":"Sex by Age","predicateType":"int"},"B19013_001E":{"label":"Estimate!!Median household income","concept":"Median Household Income","predicateType":"int"}}}'
+  groups_json <- function(universe) {
+    if (universe) {
+      '{"groups":[{"name":"B01001","description":"Sex by Age","variables":"","universe ":"Total population"},{"name":"B19013","description":"Median Household Income","variables":"","universe ":"Households "}]}'
+    } else {
+      '{"groups":[{"name":"B01001","description":"Sex by Age","variables":""}]}'
+    }
+  }
+  mock_api <- function(groups) {
+    function(url, query = list(), ...) {
+      if (grepl("variables[.]json$", url)) {
+        httr2::response(200, url = url, body = charToRaw(variables_json))
+      } else if (is.null(groups)) {
+        httr2::response(404, url = url, body = charToRaw("Not Found"))
+      } else {
+        httr2::response(200, url = url, body = charToRaw(groups))
+      }
+    }
+  }
+
+  local_mocked_bindings(census_api_get = mock_api(groups_json(TRUE)))
+  v <- load_variables(2023, "acs1", key = "test-key")
+  expect_equal(v$universe, c("Total population", "Households"))
+
+  local_mocked_bindings(census_api_get = mock_api(groups_json(FALSE)))
+  expect_false("universe" %in% names(load_variables(2023, "acs1", key = "test-key")))
+
+  local_mocked_bindings(census_api_get = mock_api(NULL))
+  expect_equal(names(load_variables(2023, "acs1", key = "test-key")), c("name", "label", "concept"))
 })

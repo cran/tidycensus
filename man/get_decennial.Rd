@@ -22,6 +22,9 @@ get_decennial(
   pop_group_label = FALSE,
   key = NULL,
   show_call = FALSE,
+  drop_empty = FALSE,
+  cb = TRUE,
+  labels = FALSE,
   ...
 )
 }
@@ -61,7 +64,9 @@ row represents an enumeration unit and the variables are in the
 columns.}
 
 \item{keep_geo_vars}{if TRUE, keeps all the variables from the Census
-shapefile obtained by tigris.  Defaults to FALSE.}
+shapefile obtained by tigris.  Defaults to FALSE.  As the shapefile has its own \code{NAME} column, the
+shapefile's name is returned as \code{NAME.x} and the Census name for each geography
+(the \code{NAME} column when \code{keep_geo_vars = FALSE}) as \code{NAME.y}.}
 
 \item{shift_geo}{(deprecated) if TRUE, returns geometry with Alaska and Hawaii
 shifted for thematic mapping of the entire US.
@@ -83,6 +88,29 @@ Obtain one at \url{https://api.census.gov/data/key_signup.html}}
 in debugging and determining if error messages returned are
 due to tidycensus or the Census API. Copy to the API call into
 a browser and see what is returned by the API directly. Defaults to FALSE.}
+
+\item{drop_empty}{if TRUE and \code{geometry = TRUE}, drops rows with empty geometries.
+These are typically water-only areas, such as offshore block groups,
+that are not in the cartographic boundary files used by default; use
+\code{cb = FALSE} to return TIGER/Line geometries for these areas instead.
+Defaults to FALSE.}
+
+\item{cb}{if TRUE (the default), uses the Census Bureau's cartographic boundary files
+for feature geometry when \code{geometry = TRUE}. These are generalized and clipped to
+the shoreline. If FALSE, uses the more detailed TIGER/Line files, which include water
+area. Note that tigris functions default to \code{cb = FALSE}. TIGER/Line files are
+always used for 2011 and 2012, when cartographic boundary files are not available.}
+
+\item{labels}{Name variables from their labels instead of their IDs.
+\code{FALSE} (the default) uses variable IDs. \code{TRUE} uses cleaned labels
+(e.g. \code{total_male_under_5_years}), in the \code{variable} column of tidy
+output or the column names of wide output; variables whose labels are identical
+get their concept added (e.g. \code{total_male_under_5_years_white_alone}).
+\code{"concept"} always adds the concept to the name. \code{"attributes"} keeps
+the IDs and attaches the cleaned label (e.g. "Total > Male > Under 5 years") and
+concept to each column of wide output as \code{label} and \code{concept}
+attributes; it has no effect on tidy output. Variables you name yourself in
+\code{variables} keep your names.}
 
 \item{...}{Other keyword arguments}
 }

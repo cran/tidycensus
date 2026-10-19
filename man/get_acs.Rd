@@ -22,6 +22,10 @@ get_acs(
   moe_level = 90,
   survey = "acs5",
   show_call = FALSE,
+  drop_empty = FALSE,
+  cb = TRUE,
+  suffix = c("E", "M"),
+  labels = FALSE,
   ...
 )
 }
@@ -57,15 +61,18 @@ Defaults to NULL.}
 \item{zcta}{The zip code tabulation area(s) for which you are requesting
 data. Specify a single value or a vector of values to get data for more
 than one ZCTA. Numeric or character ZCTA GEOIDs are accepted. When
-specifying ZCTAs, geography must be set to `"zcta"` and `state` must be specified with
-`county` left as `NULL`. Defaults to NULL.}
+specifying ZCTAs, geography must be set to `"zcta"` and `county` left as `NULL`.
+`state` can be used to request ZCTAs within a state for the 2011-2019 ACS only;
+the Census API does not support this for 2020 and later. Defaults to NULL.}
 
 \item{geometry}{if FALSE (the default), return a regular tibble of ACS data.
 if TRUE, uses the tigris package to return an sf tibble with simple feature
 geometry in the `geometry` column.}
 
 \item{keep_geo_vars}{if TRUE, keeps all the variables from the Census
-shapefile obtained by tigris.  Defaults to FALSE.}
+shapefile obtained by tigris.  Defaults to FALSE.  As the shapefile has its own \code{NAME} column, the
+shapefile's name is returned as \code{NAME.x} and the Census name for each geography
+(the \code{NAME} column when \code{keep_geo_vars = FALSE}) as \code{NAME.y}.}
 
 \item{shift_geo}{(deprecated) if TRUE, returns geometry with Alaska and Hawaii shifted for
 thematic mapping of the entire US. Geometry was originally obtained from
@@ -89,6 +96,35 @@ expressed as "acs1", "acs3", and "acs5". The default selection is "acs5."}
 useful in debugging and determining if error messages returned are due to
 tidycensus or the Census API. Copy to the API call into a browser and see
 what is returned by the API directly. Defaults to FALSE.}
+
+\item{drop_empty}{if TRUE and \code{geometry = TRUE}, drops rows with empty geometries.
+These are typically water-only areas, such as offshore block groups,
+that are not in the cartographic boundary files used by default; use
+\code{cb = FALSE} to return TIGER/Line geometries for these areas instead.
+Defaults to FALSE.}
+
+\item{cb}{if TRUE (the default), uses the Census Bureau's cartographic boundary files
+for feature geometry when \code{geometry = TRUE}. These are generalized and clipped to
+the shoreline. If FALSE, uses the more detailed TIGER/Line files, which include water
+area. Note that tigris functions default to \code{cb = FALSE}. TIGER/Line files are
+always used for 2011 and 2012, when cartographic boundary files are not available.}
+
+\item{suffix}{A character vector of two suffixes for the estimate and margin of
+error columns when \code{output = "wide"}. Defaults to \code{c("E", "M")}, giving
+columns like \code{B19013_001E} and \code{B19013_001M}; for example,
+\code{c("_est", "_moe")} gives \code{B19013_001_est} and \code{B19013_001_moe}.
+Ignored when \code{output = "tidy"}.}
+
+\item{labels}{Name variables from their labels instead of their IDs.
+\code{FALSE} (the default) uses variable IDs. \code{TRUE} uses cleaned labels
+(e.g. \code{total_male_under_5_years}), in the \code{variable} column of tidy
+output or the column names of wide output; variables whose labels are identical
+get their concept added (e.g. \code{total_male_under_5_years_white_alone}).
+\code{"concept"} always adds the concept to the name. \code{"attributes"} keeps
+the IDs and attaches the cleaned label (e.g. "Total > Male > Under 5 years") and
+concept to each column of wide output as \code{label} and \code{concept}
+attributes; it has no effect on tidy output. Variables you name yourself in
+\code{variables} keep your names.}
 
 \item{...}{Other keyword arguments}
 }

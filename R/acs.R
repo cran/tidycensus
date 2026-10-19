@@ -23,13 +23,16 @@
 #' @param zcta The zip code tabulation area(s) for which you are requesting
 #'   data. Specify a single value or a vector of values to get data for more
 #'   than one ZCTA. Numeric or character ZCTA GEOIDs are accepted. When
-#'   specifying ZCTAs, geography must be set to `"zcta"` and `state` must be specified with
-#'   `county` left as `NULL`. Defaults to NULL.
+#'   specifying ZCTAs, geography must be set to `"zcta"` and `county` left as `NULL`.
+#'   `state` can be used to request ZCTAs within a state for the 2011-2019 ACS only;
+#'   the Census API does not support this for 2020 and later. Defaults to NULL.
 #' @param geometry if FALSE (the default), return a regular tibble of ACS data.
 #'   if TRUE, uses the tigris package to return an sf tibble with simple feature
 #'   geometry in the `geometry` column.
 #' @param keep_geo_vars if TRUE, keeps all the variables from the Census
-#'   shapefile obtained by tigris.  Defaults to FALSE.
+#'   shapefile obtained by tigris.  Defaults to FALSE.  As the shapefile has its own \code{NAME} column, the
+#'   shapefile's name is returned as \code{NAME.x} and the Census name for each geography
+#'   (the \code{NAME} column when \code{keep_geo_vars = FALSE}) as \code{NAME.y}.
 #' @param shift_geo (deprecated) if TRUE, returns geometry with Alaska and Hawaii shifted for
 #'   thematic mapping of the entire US. Geometry was originally obtained from
 #'   the albersusa R package. As of May 2021, we recommend using \code{tigris::shift_geometry()}
@@ -47,6 +50,31 @@
 #'   useful in debugging and determining if error messages returned are due to
 #'   tidycensus or the Census API. Copy to the API call into a browser and see
 #'   what is returned by the API directly. Defaults to FALSE.
+#' @param drop_empty if TRUE and \code{geometry = TRUE}, drops rows with empty geometries.
+#'                   These are typically water-only areas, such as offshore block groups,
+#'                   that are not in the cartographic boundary files used by default; use
+#'                   \code{cb = FALSE} to return TIGER/Line geometries for these areas instead.
+#'                   Defaults to FALSE.
+#' @param cb if TRUE (the default), uses the Census Bureau's cartographic boundary files
+#'   for feature geometry when \code{geometry = TRUE}. These are generalized and clipped to
+#'   the shoreline. If FALSE, uses the more detailed TIGER/Line files, which include water
+#'   area. Note that tigris functions default to \code{cb = FALSE}. TIGER/Line files are
+#'   always used for 2011 and 2012, when cartographic boundary files are not available.
+#' @param labels Name variables from their labels instead of their IDs.
+#'   \code{FALSE} (the default) uses variable IDs. \code{TRUE} uses cleaned labels
+#'   (e.g. \code{total_male_under_5_years}), in the \code{variable} column of tidy
+#'   output or the column names of wide output; variables whose labels are identical
+#'   get their concept added (e.g. \code{total_male_under_5_years_white_alone}).
+#'   \code{"concept"} always adds the concept to the name. \code{"attributes"} keeps
+#'   the IDs and attaches the cleaned label (e.g. "Total > Male > Under 5 years") and
+#'   concept to each column of wide output as \code{label} and \code{concept}
+#'   attributes; it has no effect on tidy output. Variables you name yourself in
+#'   \code{variables} keep your names.
+#' @param suffix A character vector of two suffixes for the estimate and margin of
+#'   error columns when \code{output = "wide"}. Defaults to \code{c("E", "M")}, giving
+#'   columns like \code{B19013_001E} and \code{B19013_001M}; for example,
+#'   \code{c("_est", "_moe")} gives \code{B19013_001_est} and \code{B19013_001_moe}.
+#'   Ignored when \code{output = "tidy"}.
 #' @param ... Other keyword arguments
 #'
 #' @return A tibble or sf tibble of ACS data
@@ -85,7 +113,30 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                     state = NULL, county = NULL, zcta = NULL,
                     geometry = FALSE, keep_geo_vars = FALSE,
                     shift_geo = FALSE, summary_var = NULL, key = NULL,
-                    moe_level = 90, survey = "acs5", show_call = FALSE, ...) {
+                    moe_level = 90, survey = "acs5", show_call = FALSE,
+                    drop_empty = FALSE, cb = TRUE, suffix = c("E", "M"), labels = FALSE,
+                    ...) {
+
+  # Run the request without labels, then label or rename the result
+  if (!isFALSE(validate_labels_arg(labels))) {
+    call <- match.call()
+    call$labels <- FALSE
+    result <- eval(call, parent.frame())
+
+    return(apply_variable_labels(
+      result, labels, toupper_values(variables), output, suffix,
+      lookup = function(codes) {
+        datasets <- acs_label_dataset(codes, survey)
+        do.call(rbind, lapply(unique(datasets), function(d) {
+          variable_labels(codes[datasets == d], year, d, key)
+        }))
+      }
+    ))
+  }
+
+  if (!is.character(suffix) || length(suffix) != 2 || anyNA(suffix) || suffix[1] == suffix[2]) {
+    stop("`suffix` must be two different strings, for estimates and margins of error, e.g. c(\"E\", \"M\").", call. = FALSE)
+  }
 
   if (survey == "acs1") {
     message(sprintf("Getting data from the %s 1-year ACS", year))
@@ -185,6 +236,20 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
          call. = FALSE)
   }
 
+  if (any(is.na(variables) | variables == "")) {
+    stop("One or more requested variables is empty or missing; please check the `variables` argument.",
+         call. = FALSE)
+  }
+
+  if (any(variables != toupper(variables))) {
+    message(sprintf("Converting variable IDs to uppercase: %s",
+                    paste(variables[variables != toupper(variables)], collapse = ", ")))
+    variables <- toupper(variables)
+  }
+
+  # Unnamed elements of partly named `variables` keep their IDs
+  variables <- fill_variable_names(variables)
+
   # CBSA alias (fixes #514 by reverting back)
   if (geography == "cbsa") {
     geography <- "metropolitan statistical area/micropolitan statistical area"
@@ -200,6 +265,17 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
   # allow underscores and convert back to spaces
   if (grepl("_", geography) & !grepl(" ", geography)) geography <- gsub("_", " ", geography)
 
+  if (geography %in% names(national_within_parent) && (!is.null(state) || !is.null(county))) {
+    stop(sprintf("%ss are returned for the entire US; remove `state` and `county` and filter the result instead.", stringr::str_to_sentence(geography)), call. = FALSE)
+  }
+
+  # Resolve county names once, so the data and geometry use the same county
+  county <- resolve_county_names(state, county)
+
+  if (geography == "tribal census tract" && survey == "acs1") {
+    stop("Tribal census tracts are not available in the 1-year ACS. Use `survey = \"acs5\"` instead.", call. = FALSE)
+  }
+
   if (any(grepl("^S[0-9]|^DP", variables)) && geography == "block group") {
     stop("Block groups are not an available geography in the Data Profile and Subject Tables datasets.",
          call. = FALSE)
@@ -208,6 +284,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
   if (!is.null(zcta) && geography != "zip code tabulation area") {
     stop("ZCTAs can only be specified when requesting data at the zip code tabulation area-level.",
+         call. = FALSE)
+  }
+
+  # The ACS API supports ZCTAs within states only through 2019 (#564)
+  if (geography == "zip code tabulation area" && !is.null(state) && year >= 2020) {
+    stop("The Census API does not support requesting ZCTAs by state for the 2020 ACS and later. Request all ZCTAs, or specific ZCTAs with the `zcta` argument, without specifying `state`.",
          call. = FALSE)
   }
 
@@ -263,7 +345,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
         if (geometry) {
           result <- map(state, function(s, ...) {
-            suppressMessages(
+            suppress_messages_but_calls(
               insist_get_acs(geography = geography,
                              variables = variables,
                              table = table,
@@ -276,14 +358,17 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                              summary_var = summary_var,
                              geometry = geometry,
                              keep_geo_vars = keep_geo_vars,
+                             drop_empty = drop_empty,
+                             cb = cb,
                              shift_geo = FALSE,
                              key = key,
                              moe_level = moe_level,
+                             suffix = suffix,
                              survey = survey,
                              show_call = show_call,
                              ...))
           }, ...) %>%
-            reduce(rbind)
+            bind_spatial_rows()
           geoms <- unique(st_geometry_type(result))
           if (length(geoms) > 1) {
             result <- st_cast(result, "MULTIPOLYGON")
@@ -293,7 +378,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
             st_as_sf()
         } else {
           result <- map_df(state, ~{
-            suppressMessages(
+            suppress_messages_but_calls(
               insist_get_acs(geography = geography,
                              variables = variables,
                              table = table,
@@ -306,9 +391,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                              summary_var = summary_var,
                              geometry = geometry,
                              keep_geo_vars = keep_geo_vars,
+                             drop_empty = drop_empty,
+                             cb = cb,
                              shift_geo = FALSE,
                              key = key,
                              moe_level = moe_level,
+                             suffix = suffix,
                              survey = survey,
                              show_call = show_call))
           })
@@ -341,6 +429,13 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     vars_by_type <- map(c("^B|^C", "^S", "^D"), ~ variables[str_detect(variables, .x)]) %>%
       purrr::compact()
 
+    vars_unknown <- variables[!str_detect(variables, "^B|^C|^S|^D")]
+
+    if (length(vars_unknown) > 0) {
+      warning(sprintf("Skipping variables not found in the B/C, S, or DP tables: %s",
+                      paste(vars_unknown, collapse = ", ")), call. = FALSE)
+    }
+
     if (geometry) {
       if (output == "wide") {
         # when output is wide and geometry = TRUE we can't just make three calls to
@@ -355,7 +450,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
         vars_rest <- vars_by_type[-1]
 
         # return acs data with geometry for first element of list
-        result_geo <- suppressMessages(
+        result_geo <- suppress_messages_but_calls(
           insist_get_acs(
             geography = geography,
             variables = vars_first,
@@ -369,9 +464,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
             summary_var = summary_var,
             geometry = geometry,
             keep_geo_vars = keep_geo_vars,
+            drop_empty = drop_empty,
+            cb = cb,
             shift_geo = FALSE,
             key = key,
             moe_level = moe_level,
+            suffix = suffix,
             survey = survey,
             show_call = show_call,
             ...
@@ -380,7 +478,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
         # return acs data without geometry for remaining elements and join
         result_no_geo <- map(vars_rest, ~
-          suppressMessages(
+          suppress_messages_but_calls(
             insist_get_acs(
               geography = geography,
               variables = .x,
@@ -394,9 +492,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
               summary_var = summary_var,
               geometry = FALSE,
               keep_geo_vars = keep_geo_vars,
+              drop_empty = drop_empty,
+              cb = cb,
               shift_geo = FALSE,
               key = key,
               moe_level = moe_level,
+              suffix = suffix,
               survey = survey,
               show_call = show_call
               )
@@ -430,7 +531,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
       # if output is tidy, we don't need to worry about this as results can
       # be combined using rbind
       result <- map(vars_by_type, function(v, ...) {
-        suppressMessages(
+        suppress_messages_but_calls(
           insist_get_acs(
             geography = geography,
             variables = v,
@@ -444,9 +545,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
             summary_var = summary_var,
             geometry = geometry,
             keep_geo_vars = keep_geo_vars,
+            drop_empty = drop_empty,
+            cb = cb,
             shift_geo = FALSE,
             key = key,
             moe_level = moe_level,
+            suffix = suffix,
             survey = survey,
             show_call = show_call,
             ...
@@ -454,7 +558,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
         )
       }, ...
       ) %>%
-        reduce(rbind)
+        bind_spatial_rows()
       }
 
       geoms <- unique(st_geometry_type(result))
@@ -470,7 +574,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
         # when output is wide and geometry = FALSE make one call per list element
         # and then left join results into one df
         result <- map(vars_by_type, ~
-          suppressMessages(
+          suppress_messages_but_calls(
             insist_get_acs(
               geography = geography,
               variables = .x,
@@ -484,9 +588,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
               summary_var = summary_var,
               geometry = geometry,
               keep_geo_vars = keep_geo_vars,
+              drop_empty = drop_empty,
+              cb = cb,
               shift_geo = FALSE,
               key = key,
               moe_level = moe_level,
+              suffix = suffix,
               survey = survey,
               show_call = show_call
             )
@@ -503,7 +610,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
       } else {
         result <- map_df(vars_by_type, ~
-          suppressMessages(
+          suppress_messages_but_calls(
             insist_get_acs(
               geography = geography,
               variables = .x,
@@ -517,9 +624,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
               summary_var = summary_var,
               geometry = geometry,
               keep_geo_vars = keep_geo_vars,
+              drop_empty = drop_empty,
+              cb = cb,
               shift_geo = FALSE,
               key = key,
               moe_level = moe_level,
+              suffix = suffix,
               survey = survey,
               show_call = show_call
             )
@@ -540,7 +650,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     # mc <- match.call(expand.dots = TRUE)
     if (geometry) {
       result <- map(state, function(s, ...) {
-        suppressMessages(
+        suppress_messages_but_calls(
           insist_get_acs(geography = geography,
                 variables = variables,
                 table = table,
@@ -553,15 +663,18 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                 summary_var = summary_var,
                 geometry = geometry,
                 keep_geo_vars = keep_geo_vars,
+                drop_empty = drop_empty,
+                cb = cb,
                 shift_geo = FALSE,
                 key = key,
                 moe_level = moe_level,
+                suffix = suffix,
                 survey = survey,
                 show_call = show_call,
                 ...)) %>%
           st_cast("MULTIPOLYGON")
       }, ...) %>%
-        reduce(rbind)
+        bind_spatial_rows()
       geoms <- unique(st_geometry_type(result))
       if (length(geoms) > 1) {
         result <- st_cast(result, "MULTIPOLYGON")
@@ -571,7 +684,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
         st_as_sf()
     } else {
       result <- map_df(state, ~{
-        suppressMessages(
+        suppress_messages_but_calls(
           insist_get_acs(geography = geography,
                 variables = variables,
                 table = table,
@@ -584,9 +697,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                 summary_var = summary_var,
                 geometry = geometry,
                 keep_geo_vars = keep_geo_vars,
+                drop_empty = drop_empty,
+                cb = cb,
                 shift_geo = FALSE,
                 key = key,
                 moe_level = moe_level,
+                suffix = suffix,
                 survey = survey,
                 show_call = show_call))
       })
@@ -601,7 +717,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
       if (geometry) {
         message("Fetching block group data by county and combining the result.")
         result <- map(county, function(co, ...) {
-          suppressMessages(
+          suppress_messages_but_calls(
             insist_get_acs(geography = geography,
                            variables = variables,
                            table = table,
@@ -614,15 +730,18 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                            summary_var = summary_var,
                            geometry = geometry,
                            keep_geo_vars = keep_geo_vars,
+                           drop_empty = drop_empty,
+                           cb = cb,
                            shift_geo = FALSE,
                            key = key,
                            moe_level = moe_level,
+                           suffix = suffix,
                            survey = survey,
                            show_call = show_call,
                            ...)) %>%
             st_cast("MULTIPOLYGON")
         }, ...) %>%
-          reduce(rbind)
+          bind_spatial_rows()
         geoms <- unique(st_geometry_type(result))
         if (length(geoms) > 1) {
           result <- st_cast(result, "MULTIPOLYGON")
@@ -633,7 +752,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
       } else {
         message("Fetching block group data by county and combining the result.")
         result <- map_df(county, ~{
-          suppressMessages(
+          suppress_messages_but_calls(
             insist_get_acs(geography = geography,
                            variables = variables,
                            table = table,
@@ -646,9 +765,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
                            summary_var = summary_var,
                            geometry = geometry,
                            keep_geo_vars = keep_geo_vars,
+                           drop_empty = drop_empty,
+                           cb = cb,
                            shift_geo = FALSE,
                            key = key,
                            moe_level = moe_level,
+                           suffix = suffix,
                            survey = survey,
                            show_call = show_call))
         })
@@ -707,6 +829,19 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
   var_vector <- unlist(strsplit(vars2, split = ","))
 
+  # Median year structure built comes back from the API as coded values rather
+  # than years in some ACS releases (2014-2018 through 2017-2021) (#526)
+  year_built_cols <- grep("^B2503[57]_[0-9]{3}E$", names(dat), value = TRUE)
+
+  if (length(year_built_cols) > 0 &&
+      any(suppressWarnings(as.numeric(unlist(dat[year_built_cols]))) %in% c(0, 18))) {
+    rlang::warn(
+      'Median year structure built (tables B25035 / B25037) is returned with coded values for some ACS releases: 0 means "1939 or earlier" and 18 means "2014 or later". Treat these as top / bottom-coded values rather than years.',
+      .frequency = "once",
+      .frequency_id = "acs_year_built"
+    )
+  }
+
   if (output == "tidy") {
 
     sub <- dat[c("GEOID", "NAME", var_vector)]
@@ -726,15 +861,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     }
 
     # Convert missing values to NA
-    dat2[dat2 == -111111111] <- NA
-    dat2[dat2 == -222222222] <- NA
-    dat2[dat2 == -333333333] <- NA
-    dat2[dat2 == -444444444] <- NA
-    dat2[dat2 == -555555555] <- NA
-    dat2[dat2 == -666666666] <- NA
-    dat2[dat2 == -777777777] <- NA
-    dat2[dat2 == -888888888] <- NA
-    dat2[dat2 == -999999999] <- NA
+    dat2 <- replace_census_missing(dat2)
 
     if ("moe" %in% names(dat2)) {
       dat2 <- mutate(dat2, moe = moe * moe_factor)
@@ -742,11 +869,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
 
     # Change names if supplied
-    if (!is.null(names(variables))) {
-      for (i in 1:length(variables)) {
-        dat2[dat2 == variables[i]] <- names(variables)[i]
-      }
-    }
+    dat2 <- recode_named_variables(dat2, variables)
 
 
   } else if (output == "wide") {
@@ -758,15 +881,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
 
 
     # Convert missing values to NA
-    dat[dat == -111111111] <- NA
-    dat[dat == -222222222] <- NA
-    dat[dat == -333333333] <- NA
-    dat[dat == -444444444] <- NA
-    dat[dat == -555555555] <- NA
-    dat[dat == -666666666] <- NA
-    dat[dat == -777777777] <- NA
-    dat[dat == -888888888] <- NA
-    dat[dat == -999999999] <- NA
+    dat <- replace_census_missing(dat)
 
     # Find MOE vars
     # moe_vars <- grep("*M", names(dat))
@@ -776,10 +891,17 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     dat2 <- dat %>%
       mutate_if(grepl("*M$", names(.)), list(~(. * moe_factor)))
 
-    if (!is.null(names(variables))) {
-      for (i in 1:length(variables)) {
-        names(dat2) <- str_replace(names(dat2), variables[i], names(variables)[i])
-      }
+    dat2 <- recode_wide_variable_names(dat2, variables)
+
+    # Estimate and margin of error suffixes (#600)
+    if (!identical(suffix, c("E", "M"))) {
+      var_cols <- !names(dat2) %in% c("GEOID", "NAME")
+      var_names <- names(dat2)[var_cols]
+      names(dat2)[var_cols] <- ifelse(
+        grepl("E$", var_names),
+        paste0(sub("E$", "", var_names), suffix[1]),
+        paste0(sub("M$", "", var_names), suffix[2])
+      )
     }
 
     dat2 <- dat2 %>%
@@ -828,15 +950,7 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
       mutate(summary_moe = round(summary_moe * moe_factor, 0))
 
     # Convert missing values to NA
-    dat2[dat2 == -111111111] <- NA
-    dat2[dat2 == -222222222] <- NA
-    dat2[dat2 == -333333333] <- NA
-    dat2[dat2 == -444444444] <- NA
-    dat2[dat2 == -555555555] <- NA
-    dat2[dat2 == -666666666] <- NA
-    dat2[dat2 == -777777777] <- NA
-    dat2[dat2 == -888888888] <- NA
-    dat2[dat2 == -999999999] <- NA
+    dat2 <- replace_census_missing(dat2)
   }
 
 
@@ -881,10 +995,10 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
       # for `zctas()`
       if (geography == "zip code tabulation area") {
         geom <- try(suppressMessages(use_tigris(geography = geography, year = year,
-                                                state = NULL, county = NULL, ...)))
+                                                state = NULL, county = NULL, cb = cb, ...)))
       } else {
         geom <- try(suppressMessages(use_tigris(geography = geography, year = year,
-                                                state = state, county = county, ...)))
+                                                state = state, county = county, cb = cb, ...)))
       }
 
 
@@ -908,6 +1022,12 @@ get_acs <- function(geography, variables = NULL, table = NULL, cache_table = FAL
     } else {
       out <- right_join(geom, dat2, by = "GEOID") %>%
         st_as_sf()
+    }
+
+    # Rows in the data but not the boundary file (e.g. water-only areas
+    # clipped from cartographic boundary files) have empty geometries (#650)
+    if (drop_empty) {
+      out <- out[!sf::st_is_empty(out), ]
     }
 
     return(out)

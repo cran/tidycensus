@@ -2,12 +2,12 @@ Package: tidycensus
 Type: Package
 Title: Load US Census Boundary and Attribute Data as 'tidyverse' and
         'sf'-Ready Data Frames
-Version: 1.8.1
+Version: 2.0.0
 Authors@R: c(
     person(given = "Kyle", family = "Walker", email="kyle@walker-data.com", role=c("aut", "cre")),
     person(given = "Matt", family = "Herman", email = "mfherman@gmail.com", role = "aut"),
     person(given = "Kris", family = "Eberwein", email = "eberwein@knights.ucf.edu", role = "ctb"))
-Date: 2026-05-25
+Date: 2026-10-16
 URL: https://walker-data.com/tidycensus/
 BugReports: https://github.com/walkerke/tidycensus/issues
 Description: An integrated R interface to several United States Census Bureau
@@ -19,17 +19,18 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 Depends: R (>= 4.1)
-Imports: httr, sf, dplyr (>= 1.0.0), tigris, stringr, jsonlite (>=
-        1.5.0), purrr, rvest, tidyr (>= 1.0.0), readr, xml2, units,
-        utils, rlang, crayon, tidyselect
-Suggests: ggplot2, survey, srvyr, terra, testthat (>= 3.0.0), withr
+Imports: httr2 (>= 1.1.0), sf, dplyr (>= 1.0.0), tigris (>= 2.3.0),
+        stringr, jsonlite (>= 1.5.0), purrr, rvest, tidyr (>= 1.0.0),
+        readr (>= 2.0.0), xml2, units, utils, rlang, crayon, tidyselect
+Suggests: ggplot2, readxl, survey, srvyr, terra, testthat (>= 3.0.0),
+        withr
 Config/testthat/edition: 3
-RoxygenNote: 7.3.3
+Config/roxygen2/version: 8.1.0
 NeedsCompilation: no
-Packaged: 2026-05-25 11:47:50 UTC; kylewalker
+Packaged: 2026-10-19 20:22:48 UTC; kylewalker
 Author: Kyle Walker [aut, cre],
   Matt Herman [aut],
   Kris Eberwein [ctb]
 Maintainer: Kyle Walker <kyle@walker-data.com>
 Repository: CRAN
-Date/Publication: 2026-05-25 15:40:02 UTC
+Date/Publication: 2026-10-19 21:10:02 UTC

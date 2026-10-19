@@ -1,3 +1,74 @@
+# Bind a list of sf results without repeatedly copying accumulated rows.
+bind_spatial_rows <- function(pieces) {
+  dplyr::bind_rows(pieces)
+}
+
+# Helpers for post-processing Census API responses
+
+census_missing_values <- -seq.int(111111111, 999999999, by = 111111111)
+
+replace_census_missing <- function(data) {
+  missing_character <- as.character(census_missing_values)
+
+  data[] <- lapply(data, function(column) {
+    if (is.numeric(column)) {
+      replace(column, column %in% census_missing_values, NA)
+    } else if (is.character(column)) {
+      replace(column, column %in% missing_character, NA_character_)
+    } else {
+      column
+    }
+  })
+
+  data
+}
+
+recode_named_variables <- function(data, variables) {
+  if (is.null(names(variables))) {
+    return(data)
+  }
+
+  original <- unname(variables)
+  replacement <- original
+
+  # Iterate over requested variables, not response rows. Each comparison and
+  # replacement remains vectorized and preserves sequential alias behavior.
+  for (i in seq_along(original)) {
+    replacement[replacement == original[[i]]] <- names(variables)[[i]]
+  }
+
+  character_columns <- which(vapply(data, is.character, logical(1)))
+
+  # Census responses contain only a few character columns; match() processes
+  # every row in each selected column at once.
+  for (column in character_columns) {
+    index <- match(data[[column]], original)
+    matched <- !is.na(index)
+    data[[column]][matched] <- replacement[index[matched]]
+  }
+
+  data
+}
+
+recode_wide_variable_names <- function(data, variables) {
+  if (is.null(names(variables))) {
+    return(data)
+  }
+
+  new_names <- names(data)
+
+  for (i in seq_along(variables)) {
+    new_names <- stringr::str_replace(
+      new_names,
+      variables[[i]],
+      names(variables)[[i]]
+    )
+  }
+
+  names(data) <- new_names
+  data
+}
+
 # Called to check to see if "state" is a FIPS code, full name or abbreviation.
 #
 # returns NULL if input is NULL
@@ -88,7 +159,20 @@ validate_county <- function(state, county, .msg = interactive()) {
 
   } else if ((grepl("^[[:alpha:]]+", county))) { # should be a county name
 
-    county_index <- grepl(sprintf("^%s", county), county_table$county, ignore.case = TRUE)
+    # Match from the start of the name, as text rather than a regular expression
+    county_index <- startsWith(tolower(county_table$county), tolower(county))
+
+    # A complete county name wins over longer names it starts, e.g. "Collin"
+    # is Collin County, not Collingsworth County
+    if (sum(county_index) > 1) {
+      exact <- county_index &
+        (tolower(county_stem(county_table$county)) == tolower(county) |
+           tolower(county_table$county) == tolower(county))
+
+      if (sum(exact) == 1) {
+        county_index <- exact
+      }
+    }
 
     matching_counties <- county_table$county[county_index] # Get the counties that match
 
@@ -97,44 +181,77 @@ validate_county <- function(state, county, .msg = interactive()) {
       stop(sprintf("'%s' is not a valid name for counties in %s", county, county_table$state_name[1]),
               call. = FALSE)
 
-    } else if (length(matching_counties) == 1) {
-
-      if (.msg)
-        message(sprintf("Using FIPS code '%s' for '%s'",
-                        county_table[county_table$county == matching_counties, "county_code"],
-                        matching_counties))
-
-      return(county_table[county_table$county == matching_counties, "county_code"])
-
-    } else if (length(matching_counties) > 1) {
-
-      ctys <- format_vec(matching_counties)
-
-      stop("Your county string matches ", ctys, " Please refine your selection.", call. = FALSE)
-
-
     }
+
+    if (length(matching_counties) > 1) {
+      matching_counties <- choose_county(county, matching_counties, county_table)
+    }
+
+    if (.msg)
+      message(sprintf("Using FIPS code '%s' for '%s'",
+                      county_table[county_table$county == matching_counties, "county_code"],
+                      matching_counties))
+
+    return(county_table[county_table$county == matching_counties, "county_code"])
 
   }
 
 }
 
-
-# Quick function to return formatted string for county codes
-
-format_vec <- function(vec) {
-
-  out <- paste0(vec, ', ')
-
-  l <- length(out)
-
-  out[l - 1] <- paste0(out[l - 1], 'and ')
-
-  out[l] <- gsub(', ', '.', out[l])
-
-  return(paste0(out, collapse = ''))
-
+# County name without its type, e.g. "Collin" for "Collin County"
+county_stem <- function(x) {
+  sub(" (County|Parish|City and Borough|Borough|Census Area|Municipality|Municipio|city|City|Islands|Island|District)$", "", x)
 }
+
+# A county name that matches more than one county (e.g. "Baltimore": Baltimore
+# County and Baltimore city). Interactive sessions get a menu; elsewhere
+# (scripts, R Markdown / Quarto, tests) this errors with the choices.
+choose_county <- function(county, matches, county_table) {
+  codes <- county_table$county_code[match(matches, county_table$county)]
+  choices <- sprintf("%s (%s)", matches, codes)
+  state_name <- county_table$state_name[1]
+
+  if (!rlang::is_interactive()) {
+    stop(sprintf("'%s' matches more than one county in %s: %s. Use the full county name or its FIPS code.",
+                 county, state_name, paste(choices, collapse = ", ")),
+         call. = FALSE)
+  }
+
+  selection <- county_menu(
+    choices,
+    title = sprintf("\"%s\" matches more than one county in %s. Which county are you requesting?",
+                    county, state_name)
+  )
+
+  if (selection == 0) {
+    stop("No county selected.", call. = FALSE)
+  }
+
+  matches[selection]
+}
+
+# Wrapper so tests can mock the menu
+county_menu <- function(choices, title) {
+  utils::menu(choices, title = title)
+}
+
+# Resolve county names to FIPS codes once, before any downloads, so an
+# ambiguous name is asked about (or errors) a single time and the data and
+# geometry requests use the same county. FIPS codes pass through unchanged and
+# are checked later as before.
+resolve_county_names <- function(state, county) {
+  if (is.null(county) || length(state) != 1) {
+    return(county)
+  }
+
+  # The state's own "Using FIPS code" message comes later, as before
+  st <- suppressMessages(validate_state(state))
+
+  purrr::map_chr(county, function(x) {
+    if (grepl("^[[:alpha:]]+", trimws(x))) validate_county(st, x) else x
+  })
+}
+
 
 # Function from SO to do proper capitalization
 
